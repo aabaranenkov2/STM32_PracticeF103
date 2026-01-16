@@ -1,0 +1,32 @@
+# PlatformIO
+.pio/
+.vscode/
+*.elf
+*.bin
+*.hex
+*.map
+
+# Logs
+*.log
+wine_errors.log
+nextion_debug.log
+nextion_debug.log.*
+
+# OS files
+.DS_Store
+Thumbs.db
+*~
+
+# Nextion Editor project files (большие, не нужны в Git)
+*.HMI
+
+# Но оставляем .tft файлы для синхронизации
+# *.tft
+
+# Wine
+.wine/
+
+# Временные файлы
+*.tmp
+*.bak
+*.swp
