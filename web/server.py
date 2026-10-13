@@ -19,6 +19,8 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
+from urllib.request import urlopen
 
 if os.name == "nt":
     import msvcrt
@@ -185,6 +187,55 @@ def simulation_reports_directory() -> Path:
     path = reports_directory() / "симулятор"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _startup_log(message: str) -> None:
+    try:
+        path = data_directory() / "startup.log"
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {message}\n")
+    except OSError:
+        pass
+
+
+def _open_browser_when_ready(
+    url: str,
+    attempts: int = 20,
+    delay_seconds: float = 0.25,
+) -> bool:
+    version_url = f"{url.rstrip('/')}/api/version"
+    last_error = "локальный сервер не ответил"
+
+    for attempt in range(max(1, attempts)):
+        try:
+            with urlopen(version_url, timeout=1.0) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+                if response.status != HTTPStatus.OK or not payload.get("version"):
+                    raise ValueError("API версии вернул некорректный ответ")
+
+            with urlopen(url, timeout=2.0) as response:
+                html = response.read()
+                if (response.status != HTTPStatus.OK or
+                        b"<!doctype html>" not in html.lower()):
+                    raise ValueError("главная HTML-страница не готова")
+
+            if webbrowser.open(url):
+                _startup_log(
+                    f"Страница открыта после попытки {attempt + 1}"
+                )
+                return True
+            last_error = "Windows не приняла команду открытия браузера"
+        except (OSError, URLError, UnicodeError, ValueError) as exc:
+            last_error = str(exc)
+
+        if attempt + 1 < attempts:
+            time.sleep(max(0.0, delay_seconds))
+
+    _startup_log(
+        f"Не удалось открыть страницу за {max(1, attempts)} попыток: "
+        f"{last_error}"
+    )
+    return False
 
 
 class EventLog:
@@ -867,7 +918,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:
         if self.path.startswith("/api/"):
             return
-        super().log_message(fmt, *args)
+        _startup_log(f"HTTP {self.command} {self.path}: {fmt % args}")
 
 
 def _acquire_single_instance_lock() -> tuple[Any, Path] | None:
@@ -911,7 +962,7 @@ def main() -> int:
     lock = _acquire_single_instance_lock()
     if lock is None:
         if not args.no_browser:
-            webbrowser.open(url)
+            _open_browser_when_ready(url)
         return 1
     lock_handle, _lock_path = lock
 
@@ -926,7 +977,12 @@ def main() -> int:
     server = ThreadingHTTPServer(("127.0.0.1", args.port), ApiHandler)
     print(f"Лотовый датчик: {url}")
     if not args.no_browser:
-        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+        threading.Thread(
+            target=_open_browser_when_ready,
+            args=(url,),
+            daemon=True,
+            name="browser-launch",
+        ).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
