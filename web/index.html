@@ -1,0 +1,3727 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Лотовый датчик</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, system-ui, sans-serif;
+      background: #07111f;
+      color: #e8f0fa;
+      --panel: #101d2f;
+      --line: #29405d;
+      --muted: #91a5bf;
+      --accent: #35c4f3;
+      --ok: #61d58b;
+      --warn: #ffbe55;
+      --danger: #ff6171;
+      --btn-off-bg: #24344a;
+      --btn-off-border: #7a9cb8;
+      --btn-off-text: #eaf2fb;
+      --btn-off-green-bg: #1d4633;
+      --btn-off-green-border: #76b891;
+      --btn-off-green-text: #dcf5e6;
+      --btn-off-accent-bg: #1e4a63;
+      --btn-off-accent-border: #35c4f3;
+      --btn-off-accent-text: #b8e8fa;
+      --btn-off-danger-bg: #4a2230;
+      --btn-off-danger-border: #c85565;
+      --btn-off-danger-text: #ffd6db;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% 0, #173459, transparent 38%), #07111f; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 18px clamp(16px, 4vw, 48px); border-bottom: 1px solid var(--line); background: #0b1728e8; position: sticky; top: 0; z-index: 3; }
+    h1, h2 { margin: 0; }
+    h1 { font-size: clamp(1.25rem, 3vw, 1.8rem); }
+    h2 { font-size: 1.05rem; margin-bottom: 16px; color: #c9d9ec; }
+    .app-title { display: flex; align-items: baseline; gap: 10px; }
+    .app-version { color: var(--muted); font-size: .72rem; white-space: nowrap; }
+    .connection { display: flex; align-items: center; gap: 9px; color: var(--muted); }
+    .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 12px currentColor; }
+    .dot.online { background: var(--ok); }
+    main { width: min(1500px, 100%); margin: auto; padding: 24px clamp(14px, 3vw, 36px) 50px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; }
+    .card { grid-column: span 4; border: 1px solid var(--line); border-radius: 18px; background: #101d2fe8; padding: 20px; box-shadow: 0 14px 40px #0004; }
+    .wide { grid-column: span 8; }
+    .full { grid-column: 1 / -1; }
+    .sensor-status-card {
+      grid-column: 1 / -1;
+      padding: 10px 12px 12px;
+    }
+    .sensor-status-card h2 {
+      font-size: 1.05rem;
+      margin-bottom: 8px;
+      color: #c9d9ec;
+    }
+    .status-panel { display: grid; gap: 5px; margin-bottom: 6px; }
+    .status-row-scroll {
+      overflow-x: auto;
+      scrollbar-width: thin;
+    }
+    .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .status-grid.status-row {
+      grid-template-columns: repeat(7, minmax(72px, 1fr)) repeat(4, minmax(84px, 96px)) 34px;
+      gap: 5px;
+      min-width: 913px;
+      align-items: stretch;
+    }
+    .status-row-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 2px 5px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      font: inherit;
+      font-size: .66rem;
+      font-weight: 700;
+      line-height: 1.1;
+      text-align: center;
+      color: #fff;
+      cursor: pointer;
+    }
+    .status-row-btn:hover:not(:disabled) { filter: brightness(1.12); }
+    .status-row-btn.active {
+      box-shadow: 0 0 0 2px #ffffff33;
+      filter: brightness(1.08);
+    }
+    .status-row-btn:disabled,
+    .status-row-btn:disabled:hover,
+    .status-row-btn:disabled:active {
+      background: var(--btn-off-bg);
+      border-color: var(--btn-off-border);
+      color: var(--btn-off-text);
+      -webkit-text-fill-color: var(--btn-off-text);
+      box-shadow: inset 0 0 0 1px #ffffff14;
+      filter: none;
+    }
+    .status-settings-btn:disabled,
+    .status-settings-btn:disabled:hover,
+    .status-settings-btn:disabled:active {
+      background: var(--btn-off-green-bg);
+      border-color: var(--btn-off-green-border);
+      color: var(--btn-off-green-text);
+      -webkit-text-fill-color: var(--btn-off-green-text);
+    }
+    .status-cal-btn:disabled,
+    .status-cal-btn:disabled:hover,
+    .status-cal-btn:disabled:active {
+      background: var(--btn-off-accent-bg);
+      border-color: var(--btn-off-accent-border);
+      color: var(--btn-off-accent-text);
+      -webkit-text-fill-color: var(--btn-off-accent-text);
+    }
+    .status-settings-btn {
+      background: var(--ok);
+      border-color: #3d8f5a;
+    }
+    .status-cal-btn {
+      background: var(--accent);
+      border-color: #2a8eb8;
+    }
+    .status-measurements-btn {
+      background: #b9824f;
+      border-color: #d7a777;
+      font-size: .59rem;
+    }
+    .status-journal-btn {
+      background: #18304b;
+      border-color: #365271;
+    }
+    .status-home-btn {
+      width: 34px;
+      min-width: 34px;
+      max-width: 34px;
+      min-height: 34px;
+      padding: 0;
+      border-radius: 8px;
+      background: #5a4a8f;
+      border-color: #7a6ab8;
+      font-size: .52rem;
+      letter-spacing: -.02em;
+    }
+    #measurementsPanel,
+    #measurementSettingsPanel,
+    #calibrationPanel,
+    #journalPanel {
+      display: none;
+      grid-column: 1 / -1;
+    }
+    #measurementsPanel.measurements-panel-open,
+    #measurementSettingsPanel.settings-panel-open,
+    #calibrationPanel.cal-panel-open,
+    #journalPanel.journal-panel-open {
+      display: block;
+    }
+    .measurements-card { grid-column: 1 / -1; padding: 12px 14px; }
+    .section-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .section-title-row h2,
+    .section-title-row h3 {
+      margin: 0;
+      font-size: 1.05rem;
+      color: #c9d9ec;
+    }
+    .section-title-row button {
+      min-height: 30px;
+      padding: 4px 10px;
+      font-size: .68rem;
+      border-radius: 8px;
+    }
+    .measurements-card h3 {
+      margin: 12px 0 8px;
+      font-size: .88rem;
+      color: #c9d9ec;
+    }
+    .table-wrap { overflow-x: auto; }
+    .metric {
+      padding: 12px;
+      border-radius: 12px;
+      background: #0a1627;
+      border: 1px solid #233a58;
+    }
+    .metric-mode,
+    .status-grid.status-row .metric {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2px 5px;
+      border-radius: 8px;
+      min-height: 34px;
+    }
+    .metric-mode {
+      width: 100%;
+      min-height: 32px;
+    }
+    .metric span { display: block; color: var(--muted); font-size: .78rem; margin-bottom: 5px; }
+    .metric-mode span,
+    .status-grid.status-row .metric span {
+      font-size: .56rem;
+      margin-bottom: 1px;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .metric strong { font-size: 1.18rem; font-variant-numeric: tabular-nums; }
+    .metric-mode strong {
+      font-size: .82rem;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .status-grid.status-row .metric strong {
+      font-size: .78rem;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .error-box.compact {
+      margin-top: 0;
+      padding: 6px 10px;
+      min-height: 0;
+      font-size: .72rem;
+      border-radius: 8px;
+    }
+    .journal-card { padding: 12px 14px 14px; }
+    .journal-card h2 { margin-bottom: 12px; }
+    .journal-body { margin-top: 0; }
+    .encoder-live { display: grid; gap: 5px; }
+    .encoder-live-block {
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: #0a1627;
+      border: 1px solid #29405d;
+    }
+    .encoder-live-mm {
+      color: var(--accent);
+      font-size: 1.35rem;
+      font-weight: 800;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+    }
+    .encoder-live-mm.positive { color: var(--ok); }
+    .encoder-live-mm.negative { color: var(--warn); }
+    .encoder-live-mm small {
+      font-size: .62rem;
+      font-weight: 600;
+      color: #9ec3de;
+    }
+    .encoder-live-pulses-meta {
+      color: #7a94ad;
+      font-size: .58rem;
+      margin-top: 1px;
+      font-variant-numeric: tabular-nums;
+    }
+    .encoder-live-pulses {
+      color: #7a94ad;
+      font-size: .72rem;
+      margin-top: 3px;
+      font-variant-numeric: tabular-nums;
+    }
+    .encoder-live-pulses.positive { color: var(--ok); }
+    .encoder-live-pulses.negative { color: var(--warn); }
+    .encoder-live-pulses small { font-size: .58rem; font-weight: 600; }
+    .encoder-sync-warn {
+      margin-top: 4px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      background: #3a2410;
+      color: var(--warn);
+      font-size: .58rem;
+      line-height: 1.25;
+      display: none;
+    }
+    .encoder-sync-warn.visible { display: block; }
+    .encoder-motion { margin-top: 2px; color: var(--muted); font-size: .58rem; }
+    .encoder-motion.positive { color: var(--ok); }
+    .encoder-motion.negative { color: var(--warn); }
+    .pwm-control.compact {
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: #0a1627;
+      border: 1px solid #29405d;
+    }
+    .pwm-value.compact {
+      color: var(--ok);
+      font-size: 1rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      display: block;
+      margin: 4px 0;
+    }
+    .pwm-control.compact input { accent-color: var(--accent); width: 100%; }
+    .pwm-control.compact .hint { font-size: .62rem; margin: 4px 0 0; }
+    .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    button { border: 1px solid #365271; border-radius: 12px; min-height: 49px; padding: 9px 13px; background: #18304b; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+    button:hover:not(:disabled) { filter: brightness(1.14); }
+    button:active:not(:disabled) { transform: scale(.98); }
+    button:disabled,
+    button:disabled:hover,
+    button:disabled:active {
+      opacity: 1;
+      cursor: not-allowed;
+      transform: none;
+      filter: none;
+      background: var(--btn-off-bg);
+      border-color: var(--btn-off-border);
+      color: var(--btn-off-text);
+      -webkit-text-fill-color: var(--btn-off-text);
+      box-shadow: inset 0 0 0 1px #ffffff14;
+    }
+    .primary { background: var(--accent); color: #fff; border-color: transparent; }
+    button.primary:disabled,
+    button.primary:disabled:hover,
+    button.primary:disabled:active {
+      background: var(--btn-off-accent-bg);
+      border: 1px solid var(--btn-off-accent-border);
+      color: var(--btn-off-accent-text);
+      -webkit-text-fill-color: var(--btn-off-accent-text);
+    }
+    .danger { background: var(--danger); color: #fff; border-color: transparent; grid-column: span 2; font-size: 1.08rem; }
+    .warning { background: var(--warn); color: #fff; }
+    .toggle.active { background: var(--ok); color: #fff; }
+    .bunker-card { grid-column: span 8; }
+    .bunker-layout {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .bunker-top-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      gap: 16px;
+    }
+    .bunker-wrap {
+      flex: 0 0 auto;
+      width: 320px;
+      max-width: 100%;
+      margin: 0;
+    }
+    .bunker-visual-group {
+      position: relative;
+      flex: 0 0 auto;
+      width: 320px;
+      max-width: 100%;
+    }
+    .bunker-dimension-panel {
+      position: absolute;
+      top: 0;
+      right: 0;
+      z-index: 2;
+      width: 320px;
+      height: 440px;
+      pointer-events: none;
+    }
+    .bunker-dimension-stack {
+      position: static;
+    }
+    .bunker-dimension-segment {
+      position: absolute;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 2px;
+      width: 70px;
+      height: auto;
+      padding: 0;
+      border: 0;
+    }
+    .bunker-dimension-segment.upper { top: 18px; }
+    .bunker-dimension-segment.cylinder { top: 190px; }
+    .bunker-dimension-segment.lower {
+      top: 260px;
+    }
+    .bunker-diameter-row {
+      position: absolute;
+      top: -24px;
+      right: 125px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      width: 70px;
+      pointer-events: none;
+    }
+    .bunker-load-offset-row {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 2px;
+      width: 70px;
+      pointer-events: none;
+    }
+    .bunker-dimension-segment span,
+    .bunker-diameter-row span,
+    .bunker-load-offset-row span,
+    .bunker-zero-row span,
+    .bunker-zero-row strong,
+    .bunker-height-mark { display: none; }
+    .bunker-dimension-segment input,
+    .bunker-diameter-row input,
+    .bunker-load-offset-row input,
+    .bunker-zero-row input {
+      width: 42px;
+      min-height: 23px;
+      padding: 1px 2px;
+      border: 0;
+      border-radius: 5px;
+      background: #091525d9;
+      color: #fff;
+      font-size: .66rem;
+      font-weight: 800;
+      text-align: center;
+      box-sizing: border-box;
+      pointer-events: auto;
+      appearance: textfield;
+    }
+    .bunker-dimension-segment::after,
+    .bunker-diameter-row::before,
+    .bunker-diameter-row::after,
+    .bunker-load-offset-row::after,
+    .bunker-zero-row::before,
+    .bunker-zero-row::after {
+      color: #d9e8f7;
+      font-size: .64rem;
+      font-weight: 800;
+    }
+    .bunker-dimension-segment::after,
+    .bunker-diameter-row::after,
+    .bunker-zero-row::after { content: "м"; }
+    .bunker-load-offset-row::after { content: "мм"; }
+    .bunker-diameter-row::before { content: "D"; }
+    .bunker-zero-row::before { content: "R"; }
+    .bunker-dimension-panel input::-webkit-inner-spin-button,
+    .bunker-dimension-panel input::-webkit-outer-spin-button {
+      margin: 0;
+      -webkit-appearance: none;
+    }
+    .bunker-zero-row {
+      position: absolute;
+      right: 0;
+      bottom: 93px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 2px;
+      width: 70px;
+    }
+    .bunker-controls,
+    .bunker-work-modes {
+      display: flex;
+      flex-direction: column;
+      flex: 0 0 190px;
+      gap: 7px;
+      width: 190px;
+      min-width: 190px;
+      padding: 12px;
+      border: 1px solid rgba(78, 195, 245, .38);
+      border-radius: 12px;
+      background: rgba(24, 58, 78, .42);
+      box-sizing: border-box;
+    }
+    .bunker-mode-title {
+      margin: 0 0 5px;
+      color: #8cddff;
+      font-size: 1rem;
+      line-height: 1.2;
+      text-align: center;
+    }
+    .bunker-work-modes label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: .78rem;
+    }
+    .bunker-work-modes input,
+    .bunker-work-modes select {
+      width: 100%;
+      min-height: 40px;
+      margin: 0;
+      padding: 6px 10px;
+      border: 1px solid #3d8f5a;
+      border-radius: 10px;
+      background: #091525;
+      color: #e8f0fa;
+      font: inherit;
+      font-size: .78rem;
+      font-weight: 700;
+      box-sizing: border-box;
+    }
+    #periodicModeBtn {
+      min-height: 40px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: #35c4f3;
+      border-color: #68d8ff;
+      color: #062438;
+      font-weight: 800;
+    }
+    #periodicModeBtn.active {
+      background: #ef8f31;
+      border-color: #ffb15f;
+      color: #251100;
+    }
+    #periodicModeBtn:disabled,
+    #periodicModeBtn:disabled:hover,
+    #periodicModeBtn:disabled:active {
+      background: var(--btn-off-accent-bg);
+      border-color: var(--btn-off-accent-border);
+      color: var(--btn-off-accent-text);
+      -webkit-text-fill-color: var(--btn-off-accent-text);
+    }
+    #periodicModeState {
+      min-height: 30px;
+      color: var(--muted);
+      font-size: .68rem;
+      line-height: 1.3;
+      text-align: center;
+    }
+    #simulationModeBtn {
+      min-height: 40px;
+      margin-top: auto;
+      padding: 6px 10px;
+      border-color: #ffb15f;
+      background: #ef8f31;
+      color: #251100;
+      font-weight: 800;
+    }
+    #simulationModeBtn.active {
+      border-color: #ffcf8e;
+      background: #c96f17;
+      color: #fff;
+    }
+    #soundModeBtn {
+      min-height: 36px;
+      padding: 5px 9px;
+      border-color: #58708c;
+      background: #24364b;
+      color: #dce8f5;
+      font-weight: 800;
+    }
+    #soundModeBtn.active {
+      border-color: #63c983;
+      background: #2f8c50;
+      color: #fff;
+    }
+    #state.simulation-running {
+      color: #ff4d57;
+    }
+    .bunker-ctrl-btn {
+      min-height: 40px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid #3d8f5a;
+      background: var(--ok);
+      color: #fff;
+      -webkit-text-fill-color: #fff;
+      font: inherit;
+      font-size: .78rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .bunker-ctrl-btn:hover:not(:disabled) { filter: brightness(1.1); }
+    .bunker-ctrl-btn:active:not(:disabled) { transform: scale(.98); }
+    .bunker-ctrl-btn:disabled,
+    .bunker-ctrl-btn:disabled:hover,
+    .bunker-ctrl-btn:disabled:active {
+      opacity: 1;
+      cursor: not-allowed;
+      transform: none;
+      filter: none;
+      background: var(--btn-off-bg);
+      border-color: var(--btn-off-border);
+      color: var(--btn-off-text);
+      -webkit-text-fill-color: var(--btn-off-text);
+      box-shadow: inset 0 0 0 1px #ffffff14;
+    }
+    .bunker-ctrl-btn.danger:disabled,
+    .bunker-ctrl-btn.danger:disabled:hover,
+    .bunker-ctrl-btn.danger:disabled:active {
+      background: var(--btn-off-danger-bg);
+      border-color: var(--btn-off-danger-border);
+      color: var(--btn-off-danger-text);
+      -webkit-text-fill-color: var(--btn-off-danger-text);
+    }
+    .bunker-ctrl-btn.bunker-vars-btn:disabled,
+    .bunker-ctrl-btn.bunker-vars-btn:disabled:hover,
+    .bunker-ctrl-btn.bunker-vars-btn:disabled:active {
+      background: var(--btn-off-bg);
+      border-color: var(--btn-off-border);
+      color: var(--btn-off-text);
+      -webkit-text-fill-color: var(--btn-off-text);
+    }
+    .bunker-ctrl-btn.bunker-vars-btn {
+      background: #2f9f5c;
+      font-size: .72rem;
+      min-height: 36px;
+    }
+    .bunker-ctrl-btn.bunker-vars-btn.active {
+      background: #18304b;
+      border-color: #365271;
+      box-shadow: 0 0 0 2px #ffffff22;
+    }
+    .bunker-ctrl-btn.toggle.active {
+      background: #45e07a;
+      box-shadow: 0 0 0 2px #61d58b55;
+      color: #fff;
+    }
+    .bunker-ctrl-btn.warning {
+      background: #4ecf78;
+      border-color: #3d8f5a;
+      color: #fff;
+    }
+    .bunker-ctrl-btn.danger {
+      background: var(--danger);
+      border-color: transparent;
+      color: #fff;
+      min-height: 46px;
+      font-size: .82rem;
+    }
+    .bunker-auto-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 52px;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .bunker-auto-count {
+      margin: 0;
+      padding: 4px 4px;
+      border: 1px solid #3d8f5a;
+      border-radius: 10px;
+      background: #091525;
+      color: #e8f0fa;
+      font: inherit;
+      font-size: .82rem;
+      font-weight: 700;
+      text-align: center;
+      width: 100%;
+    }
+    .bunker-auto-progress {
+      color: var(--muted);
+      font-size: .68rem;
+      text-align: center;
+      line-height: 1.2;
+    }
+    .bunker { width: 100%; height: 360px; display: block; overflow: visible; }
+    .bunker-level-slider {
+      width: 22px;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      writing-mode: vertical-lr;
+      direction: rtl;
+      appearance: slider-vertical;
+      cursor: pointer;
+    }
+    .bunker-shell { fill: #243851; stroke: #6683a3; stroke-width: 3; }
+    .bunker-product { fill: #bf7d1e; transition: y .35s, height .35s; }
+    .bunker-product-cone-up,
+    .bunker-product-cone-down {
+      cursor: pointer;
+      transition: d .35s, stroke-width .15s, filter .15s;
+    }
+    .bunker-product-cone-up {
+      fill: #bf7d1e;
+      stroke: #f0bd45;
+      stroke-width: 2;
+    }
+    .bunker-product-cone-up.active {
+      stroke: #fff4b8;
+      stroke-width: 3;
+      filter: drop-shadow(0 0 4px rgba(255, 220, 90, .75));
+    }
+    .bunker-product-cone-down {
+      fill: #d4a04a;
+      fill-opacity: .28;
+      stroke: #f0bd45;
+      stroke-width: 1.5;
+      stroke-opacity: .35;
+    }
+    .bunker-product-cone-down.active {
+      fill-opacity: .45;
+      stroke: #fff4b8;
+      stroke-opacity: .85;
+      stroke-width: 3;
+      filter: drop-shadow(0 0 4px rgba(255, 220, 90, .55));
+    }
+    .bunker-product-surface { stroke: #f0bd45; stroke-width: 3; transition: y1 .35s, y2 .35s; }
+    .bunker-sensor { fill: #35c4f3; stroke: #d8f5ff; stroke-width: 2; }
+    .bunker-line { stroke: #fff; stroke-width: 2; }
+    .bunker-weight { fill: #e8eef6; stroke: #72869d; stroke-width: 2; }
+    .bunker-dimension { fill: #91a5bf; font-size: 12px; }
+    .bunker-live-value { fill: #e8f0fa; font-size: 9px; font-weight: 700; }
+    .bunker-last-result { fill: #ff394d; font-size: 27px; font-weight: 900; }
+    .bunker-weight-value { fill: #35c4f3; font-size: 11px; font-weight: 800; }
+    .bunker-settings-form {
+      display: none;
+      width: 100%;
+      margin-top: 0;
+      gap: 3px;
+      counter-reset: bunker-setting;
+    }
+    .bunker-settings-form.bunker-settings-open {
+      display: grid;
+    }
+    .bunker-setting {
+      counter-increment: bunker-setting;
+      display: grid;
+      grid-template-columns: 22px 92px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      padding: 3px 5px;
+      border-top: 1px solid #233a58;
+    }
+    .bunker-setting::before {
+      content: counter(bunker-setting) ".";
+      grid-column: 1;
+      color: var(--muted);
+      font-size: .72rem;
+      text-align: right;
+    }
+    .bunker-setting input { grid-column: 2; margin: 0; padding: 4px 6px; height: 29px; }
+    .bunker-setting span { grid-column: 3; display: grid; gap: 1px; }
+    .bunker-setting strong { color: #d7e7f6; font-size: .72rem; line-height: 1.1; }
+    .bunker-setting small { color: var(--muted); font-size: .61rem; line-height: 1.15; }
+    .unit { color: var(--muted); font-size: 1.1rem; }
+    .error-box { margin-top: 14px; padding: 12px; border-radius: 10px; background: #36151d; color: #ffb8c0; min-height: 45px; }
+    form { display: grid; gap: 12px; }
+    form.compact-form {
+      grid-template-columns: repeat(9, minmax(0, 1fr));
+      gap: 8px 10px;
+    }
+    label { color: var(--muted); font-size: .8rem; }
+    input {
+      display: block;
+      width: 100%;
+      margin-top: 5px;
+      border: 1px solid #36516f;
+      border-radius: 9px;
+      padding: 10px;
+      background: #091525;
+      color: white;
+      font: inherit;
+    }
+    .field {
+      display: grid;
+      grid-template-rows: minmax(2.75em, auto) auto;
+      align-content: end;
+      gap: 4px;
+      height: 100%;
+      color: var(--muted);
+    }
+    .field-caption {
+      display: block;
+      font-size: .68rem;
+      line-height: 1.2;
+    }
+    .field input {
+      margin-top: 0;
+      width: 100%;
+    }
+    form.compact-form .field input {
+      padding: 3px 6px;
+      font-size: .82rem;
+      border-radius: 6px;
+    }
+    form.compact-form button {
+      align-self: end;
+      min-height: 32px;
+      padding: 4px 8px;
+      font-size: .78rem;
+      border-radius: 8px;
+    }
+    form.compact-form button.primary { grid-column: span 3; }
+    form.settings-form {
+      grid-template-columns: 1fr;
+      gap: 3px;
+      counter-reset: measurement-setting;
+    }
+    .setting {
+      counter-increment: measurement-setting;
+      display: grid;
+      grid-template-columns: 22px 92px minmax(0, 1fr);
+      grid-template-rows: auto auto;
+      gap: 1px 8px;
+      align-items: center;
+      padding: 3px 5px;
+      border-top: 1px solid #233a58;
+    }
+    .setting::before {
+      content: counter(measurement-setting) ".";
+      grid-column: 1;
+      grid-row: 1 / span 2;
+      color: var(--muted);
+      font-size: .72rem;
+      text-align: right;
+    }
+    .setting span {
+      grid-column: 3;
+      grid-row: 1;
+      color: #d7e7f6;
+      font-size: .72rem;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .setting input {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      margin: 0;
+      padding: 4px 6px;
+      height: 29px;
+    }
+    .setting input[type="checkbox"] { width: 18px; height: 18px; justify-self: start; }
+    .setting small {
+      grid-column: 3;
+      grid-row: 2;
+      color: var(--muted);
+      font-size: .61rem;
+      line-height: 1.15;
+    }
+    form button { align-self: end; }
+    .journal { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    .journal th, .journal td { text-align: left; padding: 9px; border-bottom: 1px solid #263c57; }
+    .journal th { color: var(--muted); }
+    .hint { color: var(--muted); font-size: .82rem; line-height: 1.5; }
+    .config-help { margin-top: 14px; font-size: .68rem; line-height: 1.5; color: #6a8299; }
+    .config-help p { margin: 0 0 6px; color: #7a94ad; font-size: .7rem; }
+    .config-help dl { margin: 0; display: grid; gap: 3px; }
+    .config-help dt { font-weight: 600; color: #8aa3bb; }
+    .config-help dd { margin: 0 0 4px 0; padding-left: 10px; }
+    .config-help .limits { color: #5c738a; }
+    .cal-card { grid-column: span 4; padding: 12px; }
+    .cal-card h2 { margin-bottom: 8px; font-size: .95rem; }
+    .cal-panel { display: grid; gap: 6px; }
+    .cal-step {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 8px;
+      border: 1px solid #29405d;
+      border-radius: 8px;
+      background: #0a1627;
+    }
+    .cal-step-number {
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #06131e;
+      font-weight: 800;
+    }
+    .cal-step-body { display: grid; gap: 5px; }
+    .cal-step-body strong { font-size: .74rem; }
+    .cal-step-body button { min-height: 34px; padding: 5px 8px; font-size: .7rem; }
+    .cal-step-body .field { grid-template-rows: auto auto; max-width: 180px; }
+    .cal-intro { margin: 0 0 8px; font-size: .72rem; line-height: 1.45; }
+    .cal-live-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 3px;
+      margin-bottom: 8px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0a1627;
+    }
+    .cal-compact-row {
+      display: grid;
+      grid-template-columns: minmax(180px, .65fr) minmax(0, 1.35fr);
+      align-items: center;
+      gap: 5px;
+      min-height: 25px;
+      padding: 1px 5px;
+      border-bottom: 1px solid #29405d66;
+      min-width: 0;
+    }
+    .cal-compact-row:last-child { border-bottom: none; }
+    .cal-compact-row > span {
+      font-size: 1.22rem;
+      color: #f5fbff;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .cal-compact-row > strong {
+      font-size: .76rem;
+      color: #bfeaff;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+    .cal-encoder-group {
+      display: grid;
+      grid-template-columns: minmax(120px, .35fr) minmax(0, 1fr);
+      align-items: center;
+      gap: 4px;
+      padding: 2px 5px;
+      border: 1px solid #365271;
+      border-radius: 6px;
+      background: #10243a;
+    }
+    .cal-encoder-group h3 {
+      margin: 0;
+      color: #ffffff;
+      font-size: 1.22rem;
+      line-height: 1;
+    }
+    .cal-encoder-values {
+      display: grid;
+      gap: 2px;
+    }
+    .cal-encoder-value {
+      display: grid;
+      grid-template-columns: 62px minmax(0, 1fr);
+      gap: 4px;
+      align-items: center;
+      min-height: 20px;
+      padding: 0 3px;
+      background: #091522;
+      border-radius: 4px;
+    }
+    .cal-encoder-value span {
+      color: #ffffff;
+      font-size: .88rem;
+      font-weight: 900;
+    }
+    .cal-encoder-value strong {
+      color: #9de7ff;
+      font-size: .75rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .cal-coefficient-edit input {
+      width: 130px;
+      height: 22px;
+      margin: 0;
+      padding: 1px 5px;
+      border: 1px solid #58bce8;
+      border-radius: 4px;
+      background: #07111f;
+      color: #ffffff;
+      font-size: .82rem;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+    }
+    .cal-manual-save {
+      min-height: 28px;
+      padding: 3px 7px;
+      border: 1px solid #44d27a;
+      border-radius: 5px;
+      background: #237a45;
+      color: #fff;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .cal-source-select {
+      width: 100%;
+      min-height: 26px;
+      padding: 2px 5px;
+      color: #fff;
+      background: #18304b;
+      border: 1px solid #4f769f;
+      border-radius: 5px;
+      font-weight: 800;
+    }
+    .cal-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: stretch;
+      width: fit-content;
+    }
+    .cal-row-cell {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1px;
+      min-height: 34px;
+      padding: 2px 5px;
+      border-radius: 8px;
+      border: 1px solid #365271;
+      background: #18304b;
+    }
+    .cal-row-cell span {
+      font-size: .58rem;
+      color: var(--muted);
+      line-height: 1.1;
+      text-align: center;
+    }
+    .cal-row-cell input {
+      margin: 0;
+      padding: 0;
+      height: 18px;
+      border: none;
+      background: transparent;
+      color: #fff;
+      font: inherit;
+      font-size: .66rem;
+      font-weight: 700;
+      text-align: center;
+      width: 100%;
+    }
+    .cal-row-cell input:focus { outline: none; }
+    .cal-row-btn {
+      width: 100%;
+      min-width: 0;
+      min-height: 34px;
+      padding: 2px 5px;
+      font-size: .66rem;
+    }
+    .cal-offset-row {
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      padding: 6px 8px;
+      border: 1px solid #29405d;
+      border-radius: 8px;
+      background: #0a1627;
+      margin-top: 6px;
+    }
+    .cal-offset-row input {
+      margin: 0;
+      padding: 4px 6px;
+      height: 29px;
+      text-align: center;
+      font-weight: 700;
+    }
+    .cal-offset-row span {
+      display: grid;
+      gap: 1px;
+    }
+    .cal-offset-row strong {
+      color: #d7e7f6;
+      font-size: .72rem;
+      line-height: 1.1;
+    }
+    .cal-offset-row small {
+      color: var(--muted);
+      font-size: .61rem;
+      line-height: 1.15;
+    }
+    #calAutoStatus { margin: 6px 0 0; min-height: 2.2em; }
+    .cal-advanced { margin-top: 4px; border: 1px solid #29405d; border-radius: 8px; padding: 7px; }
+    .cal-advanced summary { color: var(--muted); cursor: pointer; font-size: .72rem; font-weight: 700; }
+    .cal-advanced-content { display: grid; gap: 6px; margin-top: 8px; }
+    .cal-top { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: end; }
+    .cal-factors { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .cal-factor-row { display: grid; grid-template-rows: auto auto; gap: 2px; }
+    .cal-factor-row input {
+      width: 100%;
+      margin: 0;
+      padding: 4px 6px;
+      font-size: .82rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      border: 1px solid #36516f;
+      border-radius: 6px;
+      background: #091525;
+      color: var(--accent);
+    }
+    .cal-factor-row input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .cal-save-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .cal-save-row button { min-height: 32px; font-size: .68rem; border-radius: 8px; }
+    .cal-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .cal-modes button { min-height: 28px; padding: 2px 6px; font-size: .68rem; border-radius: 8px; }
+    .cal-section {
+      display: grid;
+      gap: 4px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: #0a1627;
+      border: 1px solid #29405d;
+    }
+    .cal-section .field { grid-template-rows: auto auto; max-width: 140px; }
+    .cal-section .field input {
+      padding: 3px 6px;
+      font-size: .82rem;
+      border-radius: 6px;
+    }
+    .cal-hint { margin: 0; font-size: .62rem; line-height: 1.3; }
+    .cal-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .cal-actions button {
+      min-height: 36px;
+      padding: 4px 6px;
+      font-size: .62rem;
+      line-height: 1.2;
+      text-align: center;
+      white-space: normal;
+      border-radius: 8px;
+    }
+    #toast { position: fixed; right: 18px; bottom: 18px; max-width: 420px; padding: 14px 18px; border-radius: 12px; background: #4b1720; display: none; z-index: 5; }
+    @media (max-width: 980px) {
+      .card, .wide, .cal-card, .measurements-card, .sensor-status-card,
+      .bunker-card {
+        grid-column: 1 / -1;
+      }
+      .bunker-controls,
+      .bunker-work-modes {
+        flex-flow: column nowrap;
+        width: 190px;
+        min-width: 190px;
+      }
+      .bunker-visual-group { width: 320px; }
+      form.compact-form { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+      form.compact-form button.primary { grid-column: span 2; }
+    }
+    @media (max-width: 620px) {
+      .status-grid, .encoder-tools { grid-template-columns: 1fr; }
+      form.compact-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      form.compact-form button.primary { grid-column: span 3; }
+      .bunker { width: 220px; margin: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="app-title">
+      <h1>Лотовый датчик</h1>
+      <span class="app-version" id="appVersion">Версия …</span>
+    </div>
+    <div class="connection"><span class="dot" id="connectionDot"></span><span id="connectionText">Нет связи</span></div>
+  </header>
+
+  <main>
+    <section class="card sensor-status-card">
+      <h2>Состояние лотового датчика</h2>
+      <div class="status-panel">
+        <div class="metric metric-mode">
+          <span>Режим</span>
+          <strong id="state">—</strong>
+        </div>
+        <div class="status-row-scroll">
+          <div class="status-grid status-row">
+            <div class="metric"><span>Mot_PWM_Blue</span><strong id="pwm">0 %</strong></div>
+            <div class="metric"><span>Mot_DIR_White</span><strong id="direction">Стоп</strong></div>
+            <div class="metric"><span>Измерений</span><strong id="measurements">0</strong></div>
+            <div class="metric"><span>Сейчас вниз</span><strong id="descentDistance">0.0 мм</strong></div>
+            <div class="metric"><span>Сейчас вверх</span><strong id="ascentDistance">0.0 мм</strong></div>
+            <div class="metric"><span>Результат</span><strong id="storedResult">0.0 мм</strong></div>
+            <div class="metric"><span>Разница</span><strong id="travelDifference">0.0 мм</strong></div>
+            <button type="button" id="measurementsToggleBtn"
+                    class="status-row-btn status-measurements-btn"
+                    aria-expanded="false" aria-controls="measurementsPanel">
+              Готовые<br>измерения
+            </button>
+            <button type="button" id="settingsToggleBtn"
+                    class="status-row-btn status-settings-btn"
+                    aria-expanded="false" aria-controls="measurementSettingsPanel">
+              Настройки
+            </button>
+            <button type="button" id="calToggleBtn" class="status-row-btn status-cal-btn"
+                    aria-expanded="false" aria-controls="calibrationPanel">
+              Тарировка
+            </button>
+            <button type="button" id="journalToggleBtn"
+                    class="status-row-btn status-journal-btn"
+                    aria-expanded="false" aria-controls="journalPanel">
+              Журнал
+            </button>
+            <button type="button" id="homeCloseBtn"
+                    class="status-row-btn status-home-btn"
+                    title="Закрыть все панели">
+              Home
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="error-box compact" id="errors">Ошибок нет</div>
+    </section>
+
+    <section class="card wide" id="measurementSettingsPanel" aria-hidden="true">
+      <h2>Настройки измерения</h2>
+      <form id="deviceConfig" class="settings-form">
+        <label class="setting"><span>Скорость в ручном, %</span><input name="manual_speed_percent" id="manualSpeedPercent" type="number" min="0" max="100" step="1" value="18"><small>PWM при удержании кнопок «Вверх» и «Вниз» в блоке бункера.</small></label>
+        <label class="setting"><span>Скорость измерения, %</span><input name="descent_speed_percent" type="number" min="0" max="100" step="1"><small>Скорость спуска до грунта и подъёма после контакта. Длину измерения не ограничивает.</small></label>
+        <label class="setting"><span>Скорость выборки лишней нити, %</span><input name="takeup_speed_percent" type="number" min="0" max="100" step="1"><small>Повышенная скорость сразу после касания продукта и на первых 50 мм подъёма. Затем включается обычная скорость измерения.</small></label>
+        <label class="setting"><span>Скорость парковки, %</span><input name="park_speed_percent" type="number" min="0" max="100" step="1"><small>Скорость подъёма к верхнему упору, короткого теста вниз и возврата на упор.</small></label>
+        <label class="setting"><span>Ход теста парковки, мм</span><input name="park_test_mm" type="number" min="0" max="1000" step="1"><small>Максимальный путь короткого спуска у верхнего упора. Это не длина измерения до грунта.</small></label>
+        <label class="setting"><span>Время теста парковки, мс</span><input name="park_test_ms" type="number" min="200"><small>Максимальная длительность короткого спуска. Если энкодер двигателя включён, вращается, а основной энкодер стоит, фиксируется зажатие груза.</small></label>
+        <label class="setting"><span>Пауза проверки парковки, мс</span><input name="park_release_ms" type="number" min="100"><small>Ожидание между первым достижением упора и проверочным движением вниз. Перед измерительным спуском используется отдельная короткая пауза 20 мс.</small></label>
+        <label class="setting"><span>Задержка контроля грунта, мс</span><input name="contact_ignore_ms" type="number" min="0" max="60000" step="100"><small>Столько длится разгон. Контакт в это время не проверяется. В конце запоминается средняя скорость энкодера за всю задержку, и дальше порог грунта считается только от неё.</small></label>
+        <label class="setting"><span>Скорость контакта Enc, %</span><input name="contact_speed_percent" type="number" min="1" max="100"><small>Подъём начинается, когда средняя скорость за последние 0,5 с становится не выше этого процента от скорости, измеренной в конце задержки. Короткий пропуск импульсов грунтом не считается, поэтому скорость измерения можно снижать.</small></label>
+        <label class="setting"><span>Максимальное время одного хода, с</span><input name="motion_timeout_s" type="number" min="5" max="600" step="1"><small>Предельное время отдельного спуска, подъёма или парковки. После превышения двигатель немедленно останавливается.</small></label>
+        <label class="setting"><span>Максимальный путь спуска, мм</span><input name="max_descent_mm" type="number" min="1" max="100000" step="1"><small>Независимое ограничение безопасности. При его достижении спуск прекращается, даже если время ещё не истекло.</small></label>
+        <label class="setting"><span>Остановка двигателя, мс</span><input name="stall_timeout_ms" type="number" min="100"><small>Время без импульсов. При включённом энкодере двигателя это его тишина на упоре и ошибка, если он замолчал на спуске. При выключенном — тишина основного энкодера на упоре.</small></label>
+        <label class="setting"><span>Остановка Enc у упора, мс</span><input name="contact_timeout_ms" type="number" min="50"><small>При подъёме основной энкодер должен молчать это время. Если энкодер двигателя включён, он должен замолчать вместе с ним. На контакт с грунтом не влияет.</small></label>
+        <label class="setting"><span>Замедление перед упором, %</span><input name="slowdown_remaining_percent" type="number" min="1" max="100"><small>На последних процентах пути вверх скорость измерения снижается. Значение 10 означает последние 10 % пути.</small></label>
+        <label class="setting"><span>Делитель замедления ×0,1</span><input name="slowdown_divisor_tenths" type="number" min="10"><small>Степень снижения скорости: 10 — без снижения, 20 — скорость уменьшается в 2 раза.</small></label>
+        <label class="setting"><span>Высота груза, мм</span><input name="load_height_mm" type="number" min="0" max="10000" step="1"><small>Прибавляется к измеренному ходу нити. При тарировке вычитается из эталона, чтобы смена груза не изменяла коэффициент энкодера.</small></label>
+        <label class="setting"><span>Датчик выше базы, мм</span><input name="sensor_height_offset_mm" type="number" min="0" max="10000" step="1"><small>База вычисляется автоматически: нижний конус + цилиндр = <strong id="sensorBaseHeight">—</strong>. Если датчик поднят над этой плоскостью, укажите высоту подъёма.</small></label>
+      </form>
+    </section>
+
+    <section class="card cal-card" id="calibrationPanel" aria-hidden="true">
+      <h2>Тарировка длины</h2>
+      <div class="cal-panel">
+        <p class="hint cal-intro">
+          Один раз измерьте линейкой расстояние от верхнего упора до грунта и введите его
+          как эталон. «Старт» выполнит парковку, обнуление счётчиков перед спуском,
+          полный цикл вниз/вверх и отдельно запишет коэффициенты Enc и Mot_FG.
+          Основной источник результата выбирается вручную.
+        </p>
+        <div class="cal-live-panel">
+          <div class="cal-compact-row"><span>Этап</span><strong id="calLiveStage">Ожидание</strong></div>
+          <div class="cal-compact-row"><span>Состояние</span><strong><span id="calLiveState">—</span> · PB12 <span id="calLiveGround">—</span> · <span id="calLiveMotor">Стоп</span></strong></div>
+          <div class="cal-encoder-group">
+            <h3>ЭНКОДЕР НИТИ</h3>
+            <div class="cal-encoder-values">
+              <div class="cal-encoder-value"><span>Вниз</span><strong id="calEncDown">— имп. · — мм · K=—</strong></div>
+              <div class="cal-encoder-value"><span>Вверх</span><strong id="calEncUp">— имп. · — мм · K=—</strong></div>
+              <label class="cal-encoder-value cal-coefficient-edit"><span>K вручную</span><input id="lengthCalFactorInput" type="number" min="0.1" max="20" step="0.0001" value="1.0000"></label>
+            </div>
+          </div>
+          <div class="cal-encoder-group">
+            <h3>ЭНКОДЕР ДВИГАТЕЛЯ</h3>
+            <div class="cal-encoder-values">
+              <div class="cal-encoder-value"><span>Вниз</span><strong id="calFgDown">— имп. · — мм · K=—</strong></div>
+              <div class="cal-encoder-value"><span>Вверх</span><strong id="calFgUp">— имп. · — мм · K=—</strong></div>
+              <label class="cal-encoder-value cal-coefficient-edit"><span>K вручную</span><input id="motorCalFactorInput" type="number" min="0.1" max="20" step="0.0001" value="1.0000"></label>
+            </div>
+          </div>
+          <button type="button" id="calSaveFactors" class="cal-manual-save">Записать коэффициенты Enc и Mot_FG</button>
+          <div class="cal-compact-row"><span>Сравнение вверх</span><strong id="calEncoderCompare">—</strong></div>
+          <label class="cal-compact-row"><span>Основной результат</span><select id="calMeasurementSource" class="cal-source-select"><option value="0">Энкодер нити Enc</option><option value="1">Энкодер двигателя Mot_FG</option></select></label>
+          <div class="cal-compact-row"><span>Тарировка</span><strong id="calLiveCalResult">—</strong></div>
+          <div class="cal-compact-row"><span>Контрольный замер</span><strong id="calLiveTestResult">—</strong></div>
+        </div>
+        <div class="cal-toolbar">
+          <label class="cal-row-cell">
+            <span>Эталон, мм</span>
+            <input id="calReferenceMm" type="number" min="10" max="100000" step="1"
+                   placeholder="687">
+          </label>
+          <button type="button" id="calAutoStart"
+                  class="status-row-btn status-settings-btn cal-row-btn">
+            Старт тарировки
+          </button>
+          <button type="button" id="singleMeasureBtn"
+                  class="status-row-btn status-cal-btn cal-row-btn">
+            1 замер
+          </button>
+        </div>
+        <p class="hint cal-hint" id="calAutoStatus">Ожидание запуска.</p>
+        <p class="hint cal-hint" id="calAutoResult">Коэффициент Enc: — · Mot_FG: —</p>
+        <p class="hint cal-hint">
+          Сырой ход Enc: <strong id="calRawMm">0.0</strong> мм ·
+          имп. <strong id="calRawPulses">0</strong>
+        </p>
+        <div class="encoder-live">
+          <div class="encoder-live-block">
+            <span class="field-caption">Enc_FA_White / Enc_FB_Green</span>
+            <div class="encoder-live-mm" id="encoderMmWrap">
+              <output id="encoderDistance">0.0</output> <small>мм</small>
+            </div>
+            <div class="encoder-live-pulses-meta"><span id="encoderSpeed">0</span> имп/с</div>
+            <div class="encoder-live-pulses" id="encoderPulsesWrap">
+              <output id="encoderTest">0</output> <small>имп.</small>
+            </div>
+            <div class="encoder-motion" id="encoderMotion">Без движения</div>
+          </div>
+          <div class="encoder-live-block">
+            <span class="field-caption">Mot_FG_Yellow</span>
+            <div class="encoder-live-mm" id="motorMmWrap">
+              <output id="motorDistance">0.0</output> <small>мм</small>
+            </div>
+            <div class="encoder-live-pulses-meta">редуктор ×18,8</div>
+            <div class="encoder-live-pulses" id="motorPulsesWrap">
+              <output id="motorEncoderTest">0</output> <small>имп.</small>
+            </div>
+          </div>
+        </div>
+        <div class="encoder-sync-warn" id="encoderSyncWarn">
+          Счётчики разошлись: проверьте ноль обоих импульсов перед тарировкой.
+        </div>
+        <label class="cal-offset-row">
+          <input id="calResultOffsetMm" type="number" min="-5000" max="5000" step="0.1"
+                 value="0.0">
+          <span>
+            <strong>Смещение калибровки Enc b, мм</strong>
+            <small>Служебное линейное смещение энкодера нити. Для высоты установки датчика используйте настройку «Датчик выше базы».</small>
+          </span>
+        </label>
+        <details class="cal-advanced">
+          <summary>Ручная тарировка и дополнительные настройки</summary>
+          <div class="cal-advanced-content">
+            <div class="cal-actions">
+              <button type="button" id="calCalculate">Enc по эталону и текущим имп.</button>
+              <button type="button" id="calMotorFg">Mot_FG по эталону Enc</button>
+              <button type="button" id="calResetEncoders">Обнулить Enc и Mot_FG</button>
+            </div>
+            <div class="cal-factors">
+              <label class="cal-factor-row">
+                <span class="field-caption">Enc b (смещ., мм)</span>
+                <input id="lengthCalOffsetInput" type="number" min="-5000" max="5000" step="0.1" value="0.0">
+              </label>
+            </div>
+            <div class="cal-section">
+              <label class="field"><span class="field-caption">Диаметр вала Enc, мм</span><input id="calShaftMm" type="number" min="1" max="1000" step="0.1" value="10"></label>
+              <button type="button" id="calAutoCalculate">Рассчитать Enc по диаметру</button>
+            </div>
+            <div class="cal-actions">
+              <button type="button" id="calLinearPointA">Точка A (ноль)</button>
+              <button type="button" id="calLinearEnc">Enc y=ax+b ← Mot_FG</button>
+            </div>
+            <p class="hint cal-hint" id="calLinearPointHint">Точка A: не задана</p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="card measurements-card" id="measurementsPanel"
+             aria-hidden="true">
+      <div class="section-title-row">
+        <h2>Готовые измерения</h2>
+        <button id="resetMeasurements" type="button">Сбросить массив</button>
+      </div>
+      <div class="table-wrap">
+        <table class="journal">
+          <thead><tr><th>№</th><th>Время</th><th>Измерение, мм</th><th>Результат</th><th>Причина</th></tr></thead>
+          <tbody id="completedMeasurements">
+            <tr><td colspan="5">Готовых измерений пока нет</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="contactTraceTitle">Сравнение пути Enc вниз и вверх с учетом задержки тормоза</h3>
+      <div class="table-wrap">
+        <table class="journal">
+          <thead><tr><th>№</th><th>Вниз, мм</th><th>Вверх, мм</th><th>Разница, мм</th></tr></thead>
+          <tbody id="contactTrace">
+            <tr><td colspan="4">Ожидание следующего измерения</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card bunker-card">
+      <h2>Бункер</h2>
+      <div class="bunker-layout">
+        <div class="bunker-top-row">
+      <div class="bunker-visual-group">
+      <div class="bunker-wrap">
+        <svg class="bunker" viewBox="0 0 320 440" role="img" aria-label="Схема бункера">
+          <defs>
+            <clipPath id="bunkerClip">
+              <path id="bunkerClipPath"
+                    d="M153 10 L167 10 L290 55 L290 355 L185 420 L135 420 L30 355 L30 55 Z"></path>
+            </clipPath>
+          </defs>
+          <foreignObject id="bunkerSliderHost" x="2" y="55" width="24" height="365">
+            <input xmlns="http://www.w3.org/1999/xhtml"
+                   id="fillLevelSlider" class="bunker-level-slider"
+                   type="range" min="0" max="88.9" step="0.1" value="67.8"
+                   orient="vertical" aria-label="Заданный уровень заполнения">
+          </foreignObject>
+          <path class="bunker-shell"
+                d="M153 10 L167 10 L290 55 L290 355 L185 420 L135 420 L30 355 L30 55 Z"></path>
+          <rect id="bunkerProduct" class="bunker-product" x="0" y="420"
+                width="320" height="0" clip-path="url(#bunkerClip)"></rect>
+          <path id="bunkerProductConeUp" class="bunker-product-cone-up"
+                d="" clip-path="url(#bunkerClip)" role="button" tabindex="0"
+                aria-label="Конус насыпания: прибавить объём к массе"></path>
+          <path id="bunkerProductConeDown" class="bunker-product-cone-down"
+                d="" clip-path="url(#bunkerClip)" role="button" tabindex="0"
+                aria-label="Конус выгрузки: вычесть объём из массы"></path>
+          <line id="bunkerProductSurface" class="bunker-product-surface"
+                x1="20" y1="420" x2="300" y2="420"
+                clip-path="url(#bunkerClip)"></line>
+          <rect id="bunkerSensor" class="bunker-sensor" x="33" y="38"
+                width="18" height="18" rx="2"></rect>
+          <line id="bunkerLine" class="bunker-line" x1="42" y1="56"
+                x2="42" y2="56"></line>
+          <path id="bunkerWeight" class="bunker-weight"
+                d="M34 56 Q42 48 50 56 L48 72 Q42 78 36 72 Z"></path>
+          <text id="bunkerCurrentLength" class="bunker-live-value"
+                x="160" y="35" text-anchor="middle">Enc 0.0 мм</text>
+          <text id="bunkerLastResult" class="bunker-last-result"
+                x="160" y="52" text-anchor="middle">0.0 мм</text>
+          <text id="bunkerMassValue" class="bunker-last-result"
+                x="160" y="84" text-anchor="middle">0.0 т</text>
+          <text id="bunkerWeightValue" class="bunker-weight-value"
+                x="58" y="68">0.0 мм</text>
+          <text class="bunker-dimension" x="160" y="437" text-anchor="middle">уровень от дна</text>
+        </svg>
+      </div>
+      <div class="bunker-dimension-panel" id="bunkerInlineDimensions">
+        <label class="bunker-load-offset-row">
+          <span>Груз от левой стенки, мм</span>
+          <input type="number" data-bunker-key="loadOffsetMm"
+                 min="0" max="100000" step="1"
+                 title="Груз от левой стенки, мм">
+        </label>
+        <label class="bunker-diameter-row">
+          <span>Диаметр бункера, м</span>
+          <input type="number" data-bunker-key="bunkerDiameterM"
+                 min="0.01" max="100" step="0.01"
+                 title="Диаметр бункера, м">
+        </label>
+        <div class="bunker-dimension-stack">
+          <label class="bunker-dimension-segment upper">
+            <strong class="bunker-height-mark" id="bunkerTopMark">17.24 м</strong>
+            <span>Высота верхнего конуса, м</span>
+            <input type="number" data-bunker-key="upperHeightM"
+                   min="0.01" max="100" step="0.01"
+                   title="Высота верхнего конуса, м">
+          </label>
+          <label class="bunker-dimension-segment cylinder">
+            <strong class="bunker-height-mark" id="bunkerCylinderTopMark">15.00 м</strong>
+            <span>Высота цилиндра, м</span>
+            <input type="number" data-bunker-key="cylinderHeightM"
+                   min="0.01" max="1000" step="0.01"
+                   title="Высота цилиндра, м">
+          </label>
+          <label class="bunker-dimension-segment lower">
+            <strong class="bunker-height-mark" id="bunkerLowerTopMark">5.00 м</strong>
+            <span>Высота нижнего конуса, м</span>
+            <input type="number" data-bunker-key="lowerHeightM"
+                   min="0.01" max="100" step="0.01"
+                   title="Высота нижнего конуса, м">
+          </label>
+        </div>
+        <label class="bunker-zero-row">
+          <strong>0.00 м</strong>
+          <span>R выпуска, м</span>
+          <input type="number" data-bunker-radius="lower"
+                 min="0.005" max="50" step="0.01"
+                 title="Радиус нижнего выпускного отверстия, м">
+        </label>
+      </div>
+      </div>
+        <div class="bunker-controls bunker-mode-panel">
+          <h3 class="bunker-mode-title">Тестовые режимы</h3>
+          <button type="button" id="up" class="bunker-ctrl-btn">▲ Вверх</button>
+          <button type="button" id="down" class="bunker-ctrl-btn">▼ Вниз</button>
+          <button type="button" class="bunker-ctrl-btn" data-action="park">Парковка</button>
+          <button type="button" id="singleMeasureBunkerBtn" class="bunker-ctrl-btn">1 замер</button>
+          <div class="bunker-auto-row">
+            <button type="button" class="bunker-ctrl-btn toggle" id="autoStart">Старт в автомате</button>
+            <input id="autoMeasureCount" class="bunker-auto-count" type="number"
+                   min="1" max="1000" step="1" value="10" title="Количество циклов">
+          </div>
+          <span id="autoProgress" class="bunker-auto-progress">0 / 0</span>
+          <button type="button" class="bunker-ctrl-btn warning" data-action="clear_error">Сброс ошибки</button>
+          <button type="button" class="bunker-ctrl-btn danger" data-action="stop">АВАРИЙНЫЙ СТОП</button>
+          <button type="button" id="bunkerSettingsToggleBtn"
+                  class="bunker-ctrl-btn bunker-vars-btn"
+                  aria-expanded="false" aria-controls="bunkerConfig">
+            Развернуть переменные
+          </button>
+        </div>
+        <div class="bunker-work-modes bunker-mode-panel">
+          <h3 class="bunker-mode-title">Рабочие режимы</h3>
+          <label>Интервал замеров, минут
+            <input id="periodicIntervalMinutes" type="number"
+                   min="1" max="10080" step="1" value="60">
+          </label>
+          <label>Основной энкодер результата
+            <select id="workMeasurementSource">
+              <option value="0">Энкодер нити Enc</option>
+              <option value="1">Энкодер двигателя Mot_FG</option>
+            </select>
+          </label>
+          <button id="periodicModeBtn" class="bunker-ctrl-btn" type="button">
+            Запустить периодический режим
+          </button>
+          <span id="periodicModeState">Режим выключен</span>
+          <button id="soundModeBtn" class="bunker-ctrl-btn active" type="button">
+            Звук: ВКЛ
+          </button>
+          <span class="small" id="reportPathText">Отчёт: отчеты/ГГГГ-ММ-ДД.csv</span>
+          <button id="simulationModeBtn" class="bunker-ctrl-btn" type="button">
+            Симуляция
+          </button>
+        </div>
+        </div>
+      <form id="bunkerConfig" class="bunker-settings-form">
+        <label class="bunker-setting"><input name="maxFillPercent" type="number" value="88.9" min="0" max="100" step="0.1"><span><strong>Максимальное заполнение, %</strong><small>Верхняя исходная отметка, от которой рассчитывается масштаб нити.</small></span></label>
+        <label class="bunker-setting"><input name="modelStrokeMm" type="number" value="570" min="1" max="100000" step="1"><span><strong>Полный ход макета, мм</strong><small>При этой длине нити груз должен достигнуть уровня, заданного ползунком.</small></span></label>
+        <label class="bunker-setting"><input name="upperHeightM" type="number" value="1.5" min="0.01" max="100" step="0.01"><span><strong>Верхний конус: высота, м</strong><small>Высота верхней усечённой части бункера.</small></span></label>
+        <label class="bunker-setting"><input name="upperTopDiameterM" type="number" value="0.3" min="0.01" max="100" step="0.01"><span><strong>Верхний конус: верх Ø, м</strong><small>Диаметр верхнего отверстия.</small></span></label>
+        <label class="bunker-setting"><input name="bunkerDiameterM" type="number" value="5.3" min="0.01" max="100" step="0.01"><span><strong>Диаметр бункера, м</strong><small>Общий диаметр цилиндра и широких оснований конусов.</small></span></label>
+        <label class="bunker-setting"><input name="cylinderHeightM" type="number" value="10" min="0.01" max="1000" step="0.01"><span><strong>Высота цилиндра, м</strong><small>Высота центральной цилиндрической части.</small></span></label>
+        <label class="bunker-setting"><input name="lowerHeightM" type="number" value="2" min="0.01" max="100" step="0.01"><span><strong>Нижний конус: высота, м</strong><small>Высота нижней усечённой части.</small></span></label>
+        <label class="bunker-setting"><input name="lowerBottomDiameterM" type="number" value="1" min="0.01" max="100" step="0.01"><span><strong>Нижний конус: низ Ø, м</strong><small>Диаметр нижнего выпускного отверстия.</small></span></label>
+        <label class="bunker-setting"><input name="loadOffsetMm" type="number" value="200" min="0" max="100000" step="1"><span><strong>Груз от левой стенки, мм</strong><small>Горизонтальное положение датчика, нити и груза.</small></span></label>
+        <label class="bunker-setting"><input name="density" type="number" value=".75" min="0" step=".001"><span><strong>Плотность, т/м³</strong><small>Используется для вычисления массы продукта.</small></span></label>
+        <label class="bunker-setting"><input name="factor" type="number" value="1" min="0" step=".001"><span><strong>Коэффициент продукта</strong><small>Дополнительный множитель рассчитанной массы.</small></span></label>
+      </form>
+      </div>
+    </section>
+
+    <section class="card full journal-card" id="journalPanel" aria-hidden="true">
+      <h2>Журнал</h2>
+      <div class="journal-body">
+        <table class="journal">
+          <thead><tr><th>Время</th><th>Тип</th><th>Событие</th></tr></thead>
+          <tbody id="events"><tr><td colspan="3">Событий пока нет</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+  <div id="toast"></div>
+
+  <script>
+    "use strict";
+    const $ = (selector) => document.querySelector(selector);
+    let status = { connected: false, auto: false, distance: 0 };
+    let previousEncoder = null;
+    const MANUAL_SPEED_STORAGE_KEY = "lot_manual_speed_percent";
+    const SOUND_STORAGE_KEY = "lot_motor_sound_enabled";
+    let manualSpeedSendTimer = null;
+    let soundEnabled = localStorage.getItem(SOUND_STORAGE_KEY) !== "0";
+    let motorSoundDirection = null;
+    let audioContext = null;
+    let motorOscillator = null;
+    let motorSoundGain = null;
+    let motorSoundLfo = null;
+    let configDirty = false;
+    let configSaveSerial = 0;
+    let lastSettingsSignature = "";
+    let calDirty = false;
+    let lastDeviceConfig = {
+      length_cal_x10000: 10000,
+      length_cal_offset_tenth_mm: 0
+    };
+    let linearCalPointA = null;
+    const MANUAL_PWM_MIN = 45;
+    const MANUAL_PWM_RANGE = 55;
+    const PWM_MIN_PERMILLE = 450;
+    const PWM_MAX_PERMILLE = 1000;
+    const MEASURE_MM_PER_PULSE = 31.416 / 2400;
+    const MOTOR_MM_PER_PULSE = 125.664 / (9 * 18.8);
+    const MEASUREMENTS_STORAGE_KEY = "lotCompletedMeasurements";
+    const DATA_RESET_STORAGE_KEY = "lotDataResetVersion";
+    const DATA_RESET_VERSION = "2026-10-01-auto-batch-v1";
+    let calAutoRunning = false;
+    let calibrationTestRunning = false;
+    let singleMeasureRunning = false;
+    let lastCalResultText = "—";
+    let lastTestResultText = "—";
+    const MOTION_STATES = [4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 17];
+    let calibrationDownCounts = null;
+    let calibrationUpCounts = null;
+    let calibrationDownFgCounts = null;
+    let calibrationUpFgCounts = null;
+
+    function calibrationStage(state) {
+      const stages = {
+        1: "Ожидание запуска",
+        4: "1/7 Парковка на верхнем упоре",
+        9: "2/7 Ожидание защиты двигателя",
+        10: "2/7 Проверка парковки вниз",
+        12: "2/7 Остановка перед возвратом",
+        11: "3/7 Возврат на верхний упор",
+        13: "4/7 Обнуление счётчиков",
+        5: "5/7 Спуск к грунту",
+        6: "6/7 Контакт с грунтом",
+        14: "6/7 Выборка нити вверх",
+        15: "6/7 Разгон вверх",
+        7: "6/7 Подъём к верхнему упору",
+        8: "Ошибка тарировки"
+      };
+      return stages[Number(state)] || "Подготовка";
+    }
+    let completedMeasurements = [];
+    let lastControllerState = null;
+    let measurementCycleObserved = false;
+    let measurementRecorded = false;
+    let contactTraceCaptured = false;
+    let pendingMeasurementIndex = null;
+    let contactTrace = [];
+    let autoBatchActive = false;
+    let autoBatchTarget = 0;
+    let autoBatchCompleted = 0;
+    let autoBatchErrorStreak = 0;
+    let autoCommandPending = false;
+    let autoRecoveryPending = false;
+    let autoResumeWhenReady = false;
+    const CONFIG_FIELD_NAMES = [
+      "contact_timeout_ms",
+      "stall_timeout_ms",
+      "park_release_ms",
+      "park_test_ms",
+      "contact_speed_percent",
+      "contact_ignore_ms",
+      "max_descent_mm",
+      "load_height_mm",
+      "slowdown_remaining_percent",
+      "slowdown_divisor_tenths"
+    ];
+
+    function permilleToPercent(pwm) {
+      return Math.round((pwm - PWM_MIN_PERMILLE) * 100 / (PWM_MAX_PERMILLE - PWM_MIN_PERMILLE));
+    }
+
+    function percentToPermille(percent) {
+      const clamped = Math.max(0, Math.min(100, Number(percent)));
+      return PWM_MIN_PERMILLE + Math.round(clamped * (PWM_MAX_PERMILLE - PWM_MIN_PERMILLE) / 100);
+    }
+
+    function pulsesToMm(pulses) {
+      return Number(pulses) * MEASURE_MM_PER_PULSE;
+    }
+
+    function mmToPulses(mm) {
+      return Math.max(1, Math.round(Number(mm) / MEASURE_MM_PER_PULSE));
+    }
+
+    function encCalFactor() {
+      return Number(lastDeviceConfig.length_cal_x10000 || 10000) / 10000;
+    }
+
+    function encCalOffsetMm() {
+      return Number(lastDeviceConfig.length_cal_offset_tenth_mm || 0) / 10;
+    }
+
+    function motorCalFactor() {
+      return Number(lastDeviceConfig.motor_cal_x10000 || 10000) / 10000;
+    }
+
+    function calibratedFgToMm(pulses) {
+      return Math.abs(Number(pulses)) * MOTOR_MM_PER_PULSE * motorCalFactor();
+    }
+
+    function encoderLine(counts, mm, factor) {
+      return `${Math.abs(Math.round(Number(counts) || 0))} имп. · ` +
+        `${Number(mm || 0).toFixed(1)} мм · K=${Number(factor).toFixed(4)}`;
+    }
+
+    function showCalibrationCapture(capture) {
+      const encDown = Math.abs(Number(capture.raw_down_counts) || 0);
+      const encUp = Math.abs(Number(capture.raw_up_counts) || 0);
+      const fgDown = Math.abs(Number(capture.raw_down_fg_count) || 0);
+      const fgUp = Math.abs(Number(capture.raw_up_fg_count) || 0);
+      calibrationDownCounts = encDown;
+      calibrationUpCounts = encUp;
+      calibrationDownFgCounts = fgDown;
+      calibrationUpFgCounts = fgUp;
+      const encDownMm = calibratedPulsesToMm(encDown);
+      const encUpMm = calibratedPulsesToMm(encUp);
+      const fgDownMm = calibratedFgToMm(fgDown);
+      const fgUpMm = calibratedFgToMm(fgUp);
+      $("#calEncDown").textContent =
+        encoderLine(encDown, encDownMm, encCalFactor());
+      $("#calEncUp").textContent =
+        encoderLine(encUp, encUpMm, encCalFactor());
+      $("#calFgDown").textContent =
+        encoderLine(fgDown, fgDownMm, motorCalFactor());
+      $("#calFgUp").textContent =
+        encoderLine(fgUp, fgUpMm, motorCalFactor());
+      $("#calEncoderCompare").textContent =
+        `Enc ${encUpMm.toFixed(1)} мм · Mot_FG ${fgUpMm.toFixed(1)} мм · ` +
+        `Δ ${Math.abs(encUpMm - fgUpMm).toFixed(1)} мм`;
+    }
+
+    function calibratedPulsesToMm(pulses) {
+      return Number(pulses) * MEASURE_MM_PER_PULSE * encCalFactor() + encCalOffsetMm();
+    }
+
+    function mmToCalibratedEncoderCounts(mm) {
+      const denom = MEASURE_MM_PER_PULSE * encCalFactor();
+      if (denom <= 0) return mmToPulses(mm);
+      return Math.max(1, Math.round((Number(mm) - encCalOffsetMm()) / denom));
+    }
+
+    function factorToX10000(factor) {
+      return Math.round(Number(factor) * 10000);
+    }
+
+    function calFactorsFromInputs() {
+      return {
+        length_cal_x10000: factorToX10000($("#lengthCalFactorInput").value),
+        length_cal_offset_tenth_mm: Math.round(Number($("#lengthCalOffsetInput").value) * 10),
+        motor_cal_x10000: factorToX10000($("#motorCalFactorInput").value),
+      };
+    }
+
+    function validateCalFactors(cal) {
+      if (cal.length_cal_x10000 < 1000 || cal.length_cal_x10000 > 200000) {
+        throw new Error("Enc a: допустимо 0.1000…20.0000");
+      }
+      if (cal.motor_cal_x10000 < 1000 || cal.motor_cal_x10000 > 200000) {
+        throw new Error("Mot_FG коэфф.: допустимо 0.1000…20.0000");
+      }
+      if (cal.length_cal_offset_tenth_mm < -500000 || cal.length_cal_offset_tenth_mm > 500000) {
+        throw new Error("Enc b: допустимо −5000…5000 мм");
+      }
+    }
+
+    function updateCalDisplay(config) {
+      const offsetMm = (Number(config.length_cal_offset_tenth_mm || 0) / 10).toFixed(1);
+      $("#lengthCalFactorInput").value =
+        (Number(config.length_cal_x10000 || 10000) / 10000).toFixed(4);
+      $("#lengthCalOffsetInput").value = offsetMm;
+      $("#calResultOffsetMm").value = offsetMm;
+      $("#motorCalFactorInput").value =
+        (Number(config.motor_cal_x10000 || 10000) / 10000).toFixed(4);
+    }
+
+    function updateLinearPointHint() {
+      const hint = $("#calLinearPointHint");
+      if (!linearCalPointA) {
+        hint.textContent = "Точка A: не задана";
+        return;
+      }
+      hint.textContent =
+        `Точка A: Enc ${linearCalPointA.enc} имп., Mot_FG ${linearCalPointA.mm.toFixed(1)} мм`;
+    }
+
+    function rawEncoderMm(encoder) {
+      return Math.abs(Number(encoder)) * MEASURE_MM_PER_PULSE;
+    }
+
+    function applyConfigToForm(config) {
+      lastDeviceConfig = { ...config };
+      if (!calDirty) {
+        updateCalDisplay(config);
+      }
+      const descentField = document.querySelector('#deviceConfig [name="descent_speed_percent"]');
+      if (descentField) descentField.value = permilleToPercent(config.run_pwm);
+      const parkSpeedField = document.querySelector('#deviceConfig [name="park_speed_percent"]');
+      if (parkSpeedField) parkSpeedField.value = permilleToPercent(config.park_pwm);
+      const takeupSpeedField = document.querySelector(
+        '#deviceConfig [name="takeup_speed_percent"]');
+      if (takeupSpeedField) {
+        takeupSpeedField.value = permilleToPercent(config.takeup_pwm);
+      }
+      const parkTestField = document.querySelector('#deviceConfig [name="park_test_mm"]');
+      if (parkTestField) {
+        parkTestField.value = calibratedPulsesToMm(config.park_test_pulses).toFixed(1);
+      }
+      const motionTimeoutField = document.querySelector(
+        '#deviceConfig [name="motion_timeout_s"]');
+      if (motionTimeoutField) {
+        motionTimeoutField.value =
+          (Number(config.motion_timeout_ms) / 1000).toFixed(0);
+      }
+      CONFIG_FIELD_NAMES.forEach(key => {
+        const field = document.querySelector(`#deviceConfig [name="${key}"]`);
+        if (field && key in config) field.value = config[key];
+      });
+      const sensorHeightOffset = document.querySelector(
+        '#deviceConfig [name="sensor_height_offset_mm"]');
+      if (sensorHeightOffset) {
+        sensorHeightOffset.value = Number(config.brake_comp_mm) || 0;
+      }
+      const calSource = $("#calMeasurementSource");
+      if (calSource) {
+        calSource.value =
+          Number(config.motor_encoder_enabled) !== 0 ? "1" : "0";
+      }
+      const workSource = $("#workMeasurementSource");
+      if (workSource) {
+        workSource.value =
+          Number(config.motor_encoder_enabled) !== 0 ? "1" : "0";
+      }
+      const periodicInterval = $("#periodicIntervalMinutes");
+      if (periodicInterval && document.activeElement !== periodicInterval) {
+        periodicInterval.value = String(Math.max(
+          1,
+          Math.round(Number(config.auto_interval_ms) / 60000)
+        ));
+      }
+    }
+
+    function configFromForm(form) {
+      const values = Object.fromEntries(new FormData(form));
+      return {
+        run_pwm: percentToPermille(values.descent_speed_percent),
+        park_pwm: percentToPermille(values.park_speed_percent),
+        takeup_pwm: percentToPermille(values.takeup_speed_percent),
+        contact_timeout_ms: Number(values.contact_timeout_ms),
+        stall_timeout_ms: Number(values.stall_timeout_ms),
+        mismatch_mm: Number(lastDeviceConfig.mismatch_mm) || 65535,
+        park_release_ms: Number(values.park_release_ms),
+        park_test_ms: Number(values.park_test_ms),
+        park_test_pulses: mmToCalibratedEncoderCounts(values.park_test_mm),
+        contact_speed_percent: Number(values.contact_speed_percent),
+        contact_ignore_ms: Number(values.contact_ignore_ms),
+        motion_timeout_ms: Number(values.motion_timeout_s) * 1000,
+        max_descent_mm: Number(values.max_descent_mm),
+        brake_comp_mm: Number(values.sensor_height_offset_mm),
+        descent_correction_mm: Number(lastDeviceConfig.descent_correction_mm) || 0,
+        ascent_correction_mm: Number(lastDeviceConfig.ascent_correction_mm) || 0,
+        load_height_mm: Number(values.load_height_mm),
+        error_measurement_limit: Number(lastDeviceConfig.error_measurement_limit) || 1000,
+        motor_encoder_enabled:
+          Number(lastDeviceConfig.motor_encoder_enabled) !== 0 ? 1 : 0,
+        slowdown_remaining_percent: Number(values.slowdown_remaining_percent),
+        slowdown_divisor_tenths: Number(values.slowdown_divisor_tenths),
+        auto_interval_ms: Number(lastDeviceConfig.auto_interval_ms) || 1000,
+        ...calFactorsFromInputs()
+      };
+    }
+
+    function settingsFormReady(form) {
+      return [...form.querySelectorAll("input")].every(input => {
+        if (input.type === "checkbox") return true;
+        if (input.value.trim() === "") return false;
+        const value = Number(input.value);
+        if (!Number.isFinite(value)) return false;
+        if (input.min !== "" && value < Number(input.min)) return false;
+        if (input.max !== "" && value > Number(input.max)) return false;
+        return true;
+      });
+    }
+
+    async function saveSettings() {
+      const form = $("#deviceConfig");
+      if (!settingsFormReady(form)) return;
+      const serial = ++configSaveSerial;
+      const payload = configFromForm(form);
+      const signature = JSON.stringify(payload);
+      if (signature === lastSettingsSignature) {
+        configDirty = false;
+        return;
+      }
+      try {
+        await api("/api/config", { method: "POST", body: JSON.stringify(payload) });
+        if (serial !== configSaveSerial) return;
+        configDirty = false;
+        lastDeviceConfig = { ...lastDeviceConfig, ...payload };
+        lastSettingsSignature = JSON.stringify(payload);
+        toast("Настройки записаны в контроллер");
+      } catch (error) {
+        if (serial === configSaveSerial) toast(error.message);
+      }
+    }
+
+    async function setMeasurementSource(value) {
+      const source = Number(value) !== 0 ? 1 : 0;
+      const payload = { ...lastDeviceConfig, motor_encoder_enabled: source };
+      await api("/api/config", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      lastDeviceConfig = payload;
+      $("#calMeasurementSource").value = String(source);
+      $("#workMeasurementSource").value = String(source);
+      toast(source === 0
+        ? "Основной результат: энкодер нити"
+        : "Основной результат: энкодер двигателя");
+    }
+
+    async function saveCalFactors() {
+      const cal = calFactorsFromInputs();
+      validateCalFactors(cal);
+      const payload = { ...lastDeviceConfig, ...cal };
+      await api("/api/config", { method: "POST", body: JSON.stringify(payload) });
+      lastDeviceConfig = payload;
+      calDirty = false;
+      updateCalDisplay(lastDeviceConfig);
+    }
+
+    async function saveCalResultOffset() {
+      const offsetMm = Number($("#calResultOffsetMm").value);
+      if (!Number.isFinite(offsetMm) || offsetMm < -5000 || offsetMm > 5000) {
+        throw new Error("Поправка: допустимо −5000…5000 мм");
+      }
+      const tenth = Math.round(offsetMm * 10);
+      const payload = {
+        ...lastDeviceConfig,
+        length_cal_offset_tenth_mm: tenth,
+      };
+      await api("/api/config", { method: "POST", body: JSON.stringify(payload) });
+      lastDeviceConfig.length_cal_offset_tenth_mm = tenth;
+      calDirty = false;
+      updateCalDisplay(lastDeviceConfig);
+    }
+    let bunkerConfig = {
+      maxFillPercent: 88.9,
+      modelStrokeMm: 570,
+      upperHeightM: 1.5,
+      upperTopDiameterM: 0.3,
+      bunkerDiameterM: 5.3,
+      cylinderHeightM: 10,
+      lowerHeightM: 2,
+      lowerBottomDiameterM: 1,
+      loadOffsetMm: 200,
+      density: .75,
+      factor: 1,
+      targetFillPercent: 67.8
+    };
+    let bunkerConfigDirty = false;
+    let bunkerSurfaceConeUpAdjust = false;
+    let bunkerSurfaceConeDownAdjust = false;
+    const SURFACE_CONE_APEX_DIAMETER_M = 1;
+    const SURFACE_CONE_APEX_RADIUS_M = SURFACE_CONE_APEX_DIAMETER_M / 2;
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      const body = await response.json();
+      if (!response.ok || body.ok === false) throw new Error(body.error || `HTTP ${response.status}`);
+      return body;
+    }
+
+    function bunkerConfigFromDevice(device) {
+      return {
+        maxFillPercent: Number(device.max_fill_x10) / 10,
+        targetFillPercent: Number(device.target_fill_x10) / 10,
+        modelStrokeMm: Number(device.model_stroke_mm),
+        upperHeightM: Number(device.upper_height_mm) / 1000,
+        upperTopDiameterM: Number(device.upper_top_diameter_mm) / 1000,
+        bunkerDiameterM: Number(device.bunker_diameter_mm) / 1000,
+        cylinderHeightM: Number(device.cylinder_height_mm) / 1000,
+        lowerHeightM: Number(device.lower_height_mm) / 1000,
+        lowerBottomDiameterM:
+          Number(device.lower_bottom_diameter_mm) / 1000,
+        loadOffsetMm: Number(device.load_offset_mm),
+        density: Number(device.density_x1000) / 1000,
+        factor: Number(device.product_factor_x1000) / 1000
+      };
+    }
+
+    function bunkerConfigToDevice(config) {
+      return {
+        max_fill_x10: Math.round(Number(config.maxFillPercent) * 10),
+        target_fill_x10: Math.round(Number(config.targetFillPercent) * 10),
+        model_stroke_mm: Math.round(Number(config.modelStrokeMm)),
+        upper_height_mm: Math.round(Number(config.upperHeightM) * 1000),
+        upper_top_diameter_mm:
+          Math.round(Number(config.upperTopDiameterM) * 1000),
+        bunker_diameter_mm:
+          Math.round(Number(config.bunkerDiameterM) * 1000),
+        cylinder_height_mm:
+          Math.round(Number(config.cylinderHeightM) * 1000),
+        lower_height_mm: Math.round(Number(config.lowerHeightM) * 1000),
+        lower_bottom_diameter_mm:
+          Math.round(Number(config.lowerBottomDiameterM) * 1000),
+        load_offset_mm: Math.round(Number(config.loadOffsetMm)),
+        density_x1000: Math.round(Number(config.density) * 1000),
+        product_factor_x1000: Math.round(Number(config.factor) * 1000)
+      };
+    }
+
+    function toast(message) {
+      const node = $("#toast");
+      node.textContent = message;
+      node.style.display = "block";
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => node.style.display = "none", 4000);
+    }
+
+    function updateSoundButton() {
+      const button = $("#soundModeBtn");
+      if (!button) return;
+      button.textContent = soundEnabled ? "Звук: ВКЛ" : "Звук: ВЫКЛ";
+      button.classList.toggle("active", soundEnabled);
+    }
+
+    function ensureAudioContext() {
+      const AudioContextClass =
+        window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        soundEnabled = false;
+        localStorage.setItem(SOUND_STORAGE_KEY, "0");
+        updateSoundButton();
+        return Promise.resolve();
+      }
+      if (!audioContext) audioContext = new AudioContextClass();
+      if (audioContext.state === "suspended") {
+        return audioContext.resume().catch(() => {});
+      }
+      return Promise.resolve();
+    }
+
+    function stopMotorSound() {
+      motorSoundDirection = null;
+      if (!audioContext || !motorOscillator || !motorSoundGain) return;
+      const now = audioContext.currentTime;
+      motorSoundGain.gain.cancelScheduledValues(now);
+      motorSoundGain.gain.setValueAtTime(
+        Math.max(0.0001, motorSoundGain.gain.value), now);
+      motorSoundGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+      try { motorOscillator.stop(now + 0.1); } catch (_) {}
+      if (motorSoundLfo) {
+        try { motorSoundLfo.stop(now + 0.1); } catch (_) {}
+      }
+      motorOscillator = null;
+      motorSoundGain = null;
+      motorSoundLfo = null;
+    }
+
+    function startMotorSound(direction) {
+      if (!audioContext || audioContext.state !== "running") return;
+      const now = audioContext.currentTime;
+      const up = direction === "up";
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const lfo = audioContext.createOscillator();
+      const lfoGain = audioContext.createGain();
+
+      oscillator.type = up ? "triangle" : "sawtooth";
+      oscillator.frequency.setValueAtTime(up ? 470 : 190, now);
+      lfo.frequency.setValueAtTime(up ? 8 : 5, now);
+      lfoGain.gain.setValueAtTime(up ? 0.006 : 0.009, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(up ? 0.020 : 0.024, now + 0.06);
+
+      oscillator.connect(gain);
+      lfo.connect(lfoGain);
+      lfoGain.connect(gain.gain);
+      gain.connect(audioContext.destination);
+      oscillator.start(now);
+      lfo.start(now);
+
+      motorOscillator = oscillator;
+      motorSoundGain = gain;
+      motorSoundLfo = lfo;
+      motorSoundDirection = direction;
+    }
+
+    function syncMotorSound(data) {
+      const shouldPlay =
+        soundEnabled &&
+        !document.hidden &&
+        Boolean(data.connected) &&
+        Boolean(data.motor_enabled);
+      if (!shouldPlay) {
+        stopMotorSound();
+        return;
+      }
+      const direction = data.motor_up ? "up" : "down";
+      if (motorSoundDirection === direction && motorOscillator) return;
+      stopMotorSound();
+      startMotorSound(direction);
+    }
+
+    async function command(action, extra = {}) {
+      if (action === "measure_auto" &&
+          Number(status.state) !== 1) {
+        toast("Новый замер разрешён только после сигнала «Готов»");
+        return false;
+      }
+      try {
+        const resetSimulation =
+          action === "clear_error" && Boolean(status.simulated);
+        await api("/api/command", { method: "POST", body: JSON.stringify({ action, ...extra }) });
+        if (resetSimulation) resetSimulationUi();
+        return true;
+      } catch (error) {
+        toast(error.message);
+        return false;
+      }
+    }
+
+    async function toggleSimulationMode() {
+      const enable = !Boolean(status.simulated);
+      if (!enable && Number(status.state) !== 1) {
+        toast("Сначала остановите симуляцию кнопкой «СТОП»");
+        return;
+      }
+      if (enable && autoBatchActive) {
+        stopAutoBatch("");
+      }
+      const response = await api("/api/simulation", {
+        method: "POST",
+        body: JSON.stringify({ enabled: enable })
+      });
+      previousEncoder = null;
+      render(response.status);
+      await Promise.all([
+        loadConfig(true),
+        loadCalibrationCapture(),
+        loadBunkerConfig(true)
+      ]);
+      toast(enable
+        ? "Учебный симулятор включён — контроллер не используется"
+        : "Возврат к реальному контроллеру");
+    }
+
+    function bunkerTotalHeightM() {
+      return Number(bunkerConfig.upperHeightM) +
+        Number(bunkerConfig.cylinderHeightM) +
+        Number(bunkerConfig.lowerHeightM);
+    }
+
+    function frustumPartialVolume(heightM, fullHeightM, bottomRadiusM, topRadiusM) {
+      if (heightM <= 0 || fullHeightM <= 0) return 0;
+      const h = Math.min(heightM, fullHeightM);
+      const slope = (topRadiusM - bottomRadiusM) / fullHeightM;
+      return Math.PI * (
+        bottomRadiusM * bottomRadiusM * h +
+        bottomRadiusM * slope * h * h +
+        slope * slope * h * h * h / 3
+      );
+    }
+
+    function bunkerVolumeM3(fillHeightM) {
+      const lowerHeight = Number(bunkerConfig.lowerHeightM);
+      const cylinderHeight = Number(bunkerConfig.cylinderHeightM);
+      const upperHeight = Number(bunkerConfig.upperHeightM);
+      const mainRadius = Number(bunkerConfig.bunkerDiameterM) / 2;
+      const lowerRadius = Number(bunkerConfig.lowerBottomDiameterM) / 2;
+      const upperRadius = Number(bunkerConfig.upperTopDiameterM) / 2;
+      let remaining = Math.max(0, Math.min(bunkerTotalHeightM(), fillHeightM));
+      let volume = frustumPartialVolume(
+        remaining, lowerHeight, lowerRadius, mainRadius);
+      remaining = Math.max(0, remaining - lowerHeight);
+      const cylinderPart = Math.min(remaining, cylinderHeight);
+      volume += Math.PI * mainRadius * mainRadius * cylinderPart;
+      remaining = Math.max(0, remaining - cylinderHeight);
+      volume += frustumPartialVolume(
+        remaining, upperHeight, mainRadius, upperRadius);
+      return volume;
+    }
+
+    function bunkerDrawingGeometry() {
+      const bottomY = 420;
+      const centerX = 160;
+      const totalHeight = Math.max(.01, bunkerTotalHeightM());
+      const diameter = Math.max(.01, Number(bunkerConfig.bunkerDiameterM));
+      const mainHalfWidth = 130;
+      const upperHalfWidth = 7;
+      const lowerHalfWidth = 25;
+      const usableHeight = 410;
+      const topY = 10;
+      const upperBottomY = 55;
+      const cylinderBottomY = 355;
+      const path = `M${centerX - upperHalfWidth} ${topY} ` +
+        `L${centerX + upperHalfWidth} ${topY} ` +
+        `L${centerX + mainHalfWidth} ${upperBottomY} ` +
+        `L${centerX + mainHalfWidth} ${cylinderBottomY} ` +
+        `L${centerX + lowerHalfWidth} ${bottomY} ` +
+        `L${centerX - lowerHalfWidth} ${bottomY} ` +
+        `L${centerX - mainHalfWidth} ${cylinderBottomY} ` +
+        `L${centerX - mainHalfWidth} ${upperBottomY} Z`;
+      const offsetM = Math.max(0, Math.min(
+        diameter, Number(bunkerConfig.loadOffsetMm) / 1000));
+      const sensorX = centerX - mainHalfWidth +
+        offsetM / diameter * mainHalfWidth * 2;
+      const leftTopX = centerX - upperHalfWidth;
+      const leftBottomX = centerX - mainHalfWidth;
+      const roofFraction = Math.max(0, Math.min(
+        1, (leftTopX - sensorX) / Math.max(.01, leftTopX - leftBottomX)));
+      const sensorY = topY + roofFraction * (upperBottomY - topY);
+      return {
+        topY, bottomY, centerX, mainHalfWidth, upperHalfWidth, lowerHalfWidth,
+        path, sensorX, sensorY, usableHeight, totalHeight, upperBottomY,
+        cylinderBottomY
+      };
+    }
+
+    function bunkerHalfWidthAtY(drawing, y) {
+      if (y >= drawing.upperBottomY && y <= drawing.cylinderBottomY) {
+        return drawing.mainHalfWidth;
+      }
+      if (y > drawing.cylinderBottomY) {
+        const span = drawing.bottomY - drawing.cylinderBottomY;
+        if (span <= 0) return drawing.mainHalfWidth;
+        const t = (y - drawing.cylinderBottomY) / span;
+        return drawing.mainHalfWidth +
+          (drawing.lowerHalfWidth - drawing.mainHalfWidth) * t;
+      }
+      const span = drawing.upperBottomY - drawing.topY;
+      if (span <= 0) return drawing.mainHalfWidth;
+      const t = (y - drawing.topY) / span;
+      return drawing.upperHalfWidth +
+        (drawing.mainHalfWidth - drawing.upperHalfWidth) * t;
+    }
+
+    function bunkerSurfaceConeHeightM(fillHeightM) {
+      return Math.min(1.5, Math.max(0, fillHeightM) / 8);
+    }
+
+    function bunkerSurfaceConeHeightPx(drawing, fillHeightM) {
+      return bunkerSurfaceConeHeightM(fillHeightM) /
+        drawing.totalHeight * drawing.usableHeight;
+    }
+
+    function bunkerPixelsPerMetreX() {
+      return 130 / 2.65;
+    }
+
+    function bunkerRadiusAtFillHeightM(fillHeightM) {
+      const lowerHeight = Number(bunkerConfig.lowerHeightM);
+      const cylinderHeight = Number(bunkerConfig.cylinderHeightM);
+      const upperHeight = Number(bunkerConfig.upperHeightM);
+      const mainRadius = Number(bunkerConfig.bunkerDiameterM) / 2;
+      const lowerRadius = Number(bunkerConfig.lowerBottomDiameterM) / 2;
+      const upperRadius = Number(bunkerConfig.upperTopDiameterM) / 2;
+      let remaining = Math.max(0, Math.min(bunkerTotalHeightM(), fillHeightM));
+      if (remaining <= lowerHeight) {
+        if (lowerHeight <= 0) return mainRadius;
+        return lowerRadius +
+          (mainRadius - lowerRadius) * (remaining / lowerHeight);
+      }
+      remaining -= lowerHeight;
+      if (remaining <= cylinderHeight) return mainRadius;
+      remaining -= cylinderHeight;
+      if (upperHeight <= 0) return mainRadius;
+      return mainRadius +
+        (upperRadius - mainRadius) * (Math.min(remaining, upperHeight) / upperHeight);
+    }
+
+    function bunkerSurfaceConeVolumeM3(fillHeightM) {
+      const heightM = bunkerSurfaceConeHeightM(fillHeightM);
+      if (heightM <= 0 || fillHeightM <= 0) return 0;
+      const baseRadius = bunkerRadiusAtFillHeightM(fillHeightM);
+      if (baseRadius <= SURFACE_CONE_APEX_RADIUS_M) return 0;
+      return frustumPartialVolume(
+        heightM, heightM, baseRadius, SURFACE_CONE_APEX_RADIUS_M);
+    }
+
+    function bunkerFlatApexConePath(leftX, rightX, centerX, baseY, tipY) {
+      const apexHalfPx = SURFACE_CONE_APEX_RADIUS_M * bunkerPixelsPerMetreX();
+      const topLeft = centerX - apexHalfPx;
+      const topRight = centerX + apexHalfPx;
+      const fmt = value => value.toFixed(2);
+      return [
+        `M${fmt(leftX)} ${fmt(baseY)}`,
+        `L${fmt(rightX)} ${fmt(baseY)}`,
+        `L${fmt(topRight)} ${fmt(tipY)}`,
+        `L${fmt(topLeft)} ${fmt(tipY)}`,
+        'Z'
+      ].join(' ');
+    }
+
+    function bunkerAdjustedVolumeM3(fillHeightM) {
+      let volume = bunkerVolumeM3(fillHeightM);
+      const coneVolume = bunkerSurfaceConeVolumeM3(fillHeightM);
+      if (bunkerSurfaceConeUpAdjust) volume += coneVolume;
+      if (bunkerSurfaceConeDownAdjust) volume -= coneVolume;
+      return Math.max(0, volume);
+    }
+
+    let bunkerVisualFrom = 0;
+    let bunkerVisualTo = 0;
+    let bunkerVisualStart = 0;
+    const BUNKER_VISUAL_MS = 45;
+
+    function bunkerVisualMm(now = performance.now()) {
+      const elapsed = now - bunkerVisualStart;
+      const t = Math.max(0, Math.min(1, elapsed / BUNKER_VISUAL_MS));
+      const eased = t * t * (3 - 2 * t);
+      return bunkerVisualFrom + (bunkerVisualTo - bunkerVisualFrom) * eased;
+    }
+
+    function setBunkerTarget(encoderMm) {
+      bunkerVisualFrom = bunkerVisualMm();
+      bunkerVisualTo = Math.abs(Number(encoderMm) || 0);
+      bunkerVisualStart = performance.now();
+    }
+
+    function animateBunker() {
+      showBunker(bunkerVisualMm());
+      requestAnimationFrame(animateBunker);
+    }
+
+    function showBunker(encoderMm) {
+      const drawing = bunkerDrawingGeometry();
+      const maxHeightM = drawing.totalHeight * Math.max(
+        0, Math.min(100, Number(bunkerConfig.maxFillPercent))) / 100;
+      const targetFillPercent = Math.max(0, Math.min(
+        Number(bunkerConfig.maxFillPercent),
+        Number(bunkerConfig.targetFillPercent)));
+      const targetHeightM = drawing.totalHeight * targetFillPercent / 100;
+      const fullStrokeM = Math.max(
+        .001, Number(bunkerConfig.modelStrokeMm) / 1000);
+      const measurementScale =
+        Math.max(0, maxHeightM - targetHeightM) / fullStrokeM;
+      const currentEncoderMm = Math.abs(Number(encoderMm) || 0);
+      const limitedEncoderMm = Math.min(
+        Number(bunkerConfig.modelStrokeMm), currentEncoderMm);
+      const scaledEncoderMm = currentEncoderMm * measurementScale;
+      const displayedWeightMm = status.simulated
+        ? Math.max(0, Number(status.simulation_path_mm) || 0)
+        : scaledEncoderMm;
+      const measuredLevelM = Number(status.result_mm) / 1000;
+      const fillHeightM =
+        status.simulated
+          ? targetHeightM
+          : Number(status.measurement_count) > 0 && Number.isFinite(measuredLevelM)
+          ? Math.max(0, Math.min(drawing.totalHeight, measuredLevelM))
+          : targetHeightM;
+      const productY = drawing.bottomY -
+        fillHeightM / drawing.totalHeight * drawing.usableHeight;
+      const strokeFraction = status.simulated
+        ? Math.max(0, Math.min(1, Number(status.simulation_progress) || 0))
+        : Math.max(0, Math.min(
+          1,
+          limitedEncoderMm / Math.max(1, Number(bunkerConfig.modelStrokeMm))
+        ));
+      const sensorSize = 18;
+      const sensorX = drawing.sensorX - sensorSize / 2;
+      const sensorY = drawing.sensorY - sensorSize / 2;
+      const lineStartY = drawing.sensorY + sensorSize / 2;
+      const weightTopAtTarget = Math.max(lineStartY, productY - 30);
+      const weightTopY = lineStartY + strokeFraction *
+        (weightTopAtTarget - lineStartY);
+      const weightTranslateX = drawing.sensorX - 42;
+      const weightTranslateY = weightTopY - 48;
+
+      document.querySelector(".bunker-shell").setAttribute("d", drawing.path);
+      $("#bunkerClipPath").setAttribute("d", drawing.path);
+      $("#bunkerSliderHost").setAttribute(
+        "y", drawing.upperBottomY.toFixed(2));
+      $("#bunkerSliderHost").setAttribute(
+        "height", Math.max(1, drawing.bottomY - drawing.upperBottomY).toFixed(2));
+      $("#bunkerProduct").setAttribute("y", productY.toFixed(2));
+      $("#bunkerProduct").setAttribute(
+        "height", Math.max(0, drawing.bottomY - productY).toFixed(2));
+
+      const surfaceHalfWidth = bunkerHalfWidthAtY(drawing, productY);
+      const leftX = drawing.centerX - surfaceHalfWidth;
+      const rightX = drawing.centerX + surfaceHalfWidth;
+      const coneHeightPx = bunkerSurfaceConeHeightPx(drawing, fillHeightM);
+      const coneUpApexY = Math.max(drawing.topY, productY - coneHeightPx);
+      const coneDownApexY = Math.min(
+        drawing.bottomY, productY + coneHeightPx);
+      const showCones = fillHeightM > 0 && surfaceHalfWidth > 1;
+      const coneUpPath = showCones
+        ? bunkerFlatApexConePath(
+          leftX, rightX, drawing.centerX, productY, coneUpApexY)
+        : "";
+      const coneDownPath = showCones
+        ? bunkerFlatApexConePath(
+          leftX, rightX, drawing.centerX, productY, coneDownApexY)
+        : "";
+      const coneUpEl = $("#bunkerProductConeUp");
+      const coneDownEl = $("#bunkerProductConeDown");
+      coneUpEl.setAttribute("d", coneUpPath);
+      coneDownEl.setAttribute("d", coneDownPath);
+      coneUpEl.classList.toggle("active", bunkerSurfaceConeUpAdjust);
+      coneDownEl.classList.toggle("active", bunkerSurfaceConeDownAdjust);
+      const coneVolumeM3 = bunkerSurfaceConeVolumeM3(fillHeightM);
+      coneUpEl.title = showCones
+        ? (bunkerSurfaceConeUpAdjust
+          ? `Насыпание включено: +${coneVolumeM3.toFixed(1)} м³`
+          : `Нажмите: прибавить ${coneVolumeM3.toFixed(1)} м³ (вершина Ø1 м)`)
+        : "";
+      coneDownEl.title = showCones
+        ? (bunkerSurfaceConeDownAdjust
+          ? `Выгрузка включена: −${coneVolumeM3.toFixed(1)} м³`
+          : `Нажмите: вычесть ${coneVolumeM3.toFixed(1)} м³ (вершина Ø1 м)`)
+        : "";
+      $("#bunkerProductSurface").setAttribute("x1", leftX.toFixed(2));
+      $("#bunkerProductSurface").setAttribute("x2", rightX.toFixed(2));
+      $("#bunkerProductSurface").setAttribute("y1", productY.toFixed(2));
+      $("#bunkerProductSurface").setAttribute("y2", productY.toFixed(2));
+      $("#bunkerSensor").setAttribute("x", sensorX.toFixed(2));
+      $("#bunkerSensor").setAttribute("y", sensorY.toFixed(2));
+      $("#bunkerLine").setAttribute("x1", drawing.sensorX.toFixed(2));
+      $("#bunkerLine").setAttribute("x2", drawing.sensorX.toFixed(2));
+      $("#bunkerLine").setAttribute("y1", lineStartY.toFixed(2));
+      $("#bunkerLine").setAttribute("y2", weightTopY.toFixed(2));
+      $("#bunkerWeight").setAttribute(
+        "transform", `translate(${weightTranslateX.toFixed(2)} ${weightTranslateY.toFixed(2)})`);
+      $("#bunkerCurrentLength").setAttribute(
+        "y", (drawing.topY + 10).toFixed(2));
+      $("#bunkerCurrentLength").textContent =
+        `Enc ${currentEncoderMm.toFixed(1)} мм`;
+      $("#bunkerLastResult").setAttribute(
+        "y", (drawing.upperBottomY - 3).toFixed(2));
+      $("#bunkerLastResult").textContent =
+        `${Number(status.result_mm || 0).toFixed(1)} мм`;
+      $("#bunkerMassValue").setAttribute(
+        "y", (drawing.upperBottomY + 29).toFixed(2));
+      const weightValue = $("#bunkerWeightValue");
+      const labelOnRight = drawing.sensorX <= drawing.centerX;
+      weightValue.setAttribute(
+        "x", (drawing.sensorX + (labelOnRight ? 16 : -16)).toFixed(2));
+      weightValue.setAttribute("y", (weightTopY + 18).toFixed(2));
+      weightValue.setAttribute("text-anchor", labelOnRight ? "start" : "end");
+      weightValue.textContent = `${displayedWeightMm.toFixed(1)} мм`;
+
+      const volume = bunkerAdjustedVolumeM3(fillHeightM);
+      const massTonnes = volume * Number(bunkerConfig.density) *
+        Number(bunkerConfig.factor);
+      $("#bunkerMassValue").textContent = `${massTonnes.toFixed(1)} т`;
+      $("#fillLevelSlider").title =
+        `Заданный уровень: ${targetFillPercent.toFixed(1)} %`;
+    }
+
+    function saveCompletedMeasurements() {
+      localStorage.setItem(
+        MEASUREMENTS_STORAGE_KEY,
+        JSON.stringify(completedMeasurements)
+      );
+    }
+
+    function renderCompletedMeasurements() {
+      $("#completedMeasurements").innerHTML = completedMeasurements.length
+        ? completedMeasurements.map(item =>
+          `<tr><td>${item.number}</td><td>${item.created}</td>` +
+          `<td>${item.mm === null ? "—" : Number(item.mm).toFixed(1)}</td>` +
+          `<td>${item.quality || "Годен"}</td>` +
+          `<td>${item.reason || "—"}</td></tr>`
+        ).join("")
+        : '<tr><td colspan="5">Готовых измерений пока нет</td></tr>';
+    }
+
+    function renderContactTrace() {
+      $("#contactTrace").innerHTML = contactTrace.length
+        ? contactTrace.map(item =>
+          `<tr><td>${item.number}</td><td>${item.downMm.toFixed(1)}</td>` +
+          `<td>${item.upMm.toFixed(1)}</td><td>${item.differenceMm.toFixed(1)}</td></tr>`
+        ).join("")
+        : '<tr><td colspan="4">Ожидание следующего измерения</td></tr>';
+    }
+
+    function updateAutoUi() {
+      $("#autoStart").textContent =
+        autoBatchActive ? "Остановить автомат" : "Старт в автомате";
+      $("#autoStart").classList.toggle("active", autoBatchActive);
+      $("#autoProgress").textContent =
+        `${autoBatchCompleted} / ${autoBatchTarget || 0}`;
+    }
+
+    async function togglePeriodicMode() {
+      if (Boolean(status.auto)) {
+        if (await command("auto", { enabled: false })) {
+          toast("Периодический режим остановлен");
+        }
+        return;
+      }
+      if (autoBatchActive) {
+        toast("Сначала остановите автоматическую серию");
+        return;
+      }
+      if (Number(status.state) !== 1) {
+        toast("Периодический режим можно запустить только после сигнала «Готов»");
+        return;
+      }
+      const minutes = Number($("#periodicIntervalMinutes").value);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) {
+        toast("Интервал должен быть целым числом от 1 до 10080 минут");
+        return;
+      }
+
+      const source =
+        Number($("#workMeasurementSource").value) !== 0 ? 1 : 0;
+      const payload = {
+        ...lastDeviceConfig,
+        auto_interval_ms: minutes * 60000,
+        motor_encoder_enabled: source
+      };
+      await api("/api/config", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      lastDeviceConfig = payload;
+      applyConfigToForm(payload);
+      if (await command("auto", { enabled: true })) {
+        toast("Периодический режим запущен: первый замер начинается сразу");
+      }
+    }
+
+    function stopAutoBatch(message) {
+      autoBatchActive = false;
+      autoCommandPending = false;
+      autoRecoveryPending = false;
+      autoResumeWhenReady = false;
+      updateAutoUi();
+      if (message) toast(message);
+    }
+
+    async function issueNextAutoMeasurement() {
+      if (!autoBatchActive ||
+          autoCommandPending ||
+          pendingMeasurementIndex !== null ||
+          Number(status.state) !== 1) {
+        return;
+      }
+      if (autoBatchCompleted >= autoBatchTarget) {
+        stopAutoBatch("Автоматическая серия завершена");
+        return;
+      }
+      autoCommandPending = true;
+      const accepted = await command("measure_auto");
+      if (!accepted) {
+        stopAutoBatch("Автомат остановлен: команда замера не принята");
+      }
+    }
+
+    function appendPendingMeasurement(measuredDistanceMm, data) {
+      const nextNumber = completedMeasurements.reduce(
+        (maximum, item) => Math.max(maximum, Number(item.number) || 0),
+        0
+      ) + 1;
+      completedMeasurements.push({
+        number: nextNumber,
+        created: new Date().toLocaleString(),
+        mm: measuredDistanceMm,
+        quality: "Ожидание",
+        reason: "",
+        controllerCount: Number(data.measurement_count)
+      });
+      pendingMeasurementIndex = completedMeasurements.length - 1;
+      saveCompletedMeasurements();
+      renderCompletedMeasurements();
+    }
+
+    function finalizePendingMeasurement(quality, reason) {
+      if (pendingMeasurementIndex === null) return;
+      const item = completedMeasurements[pendingMeasurementIndex];
+      item.quality = quality;
+      item.reason = reason || "";
+      pendingMeasurementIndex = null;
+      measurementCycleObserved = false;
+      saveCompletedMeasurements();
+      renderCompletedMeasurements();
+      if (autoBatchActive) {
+        if (quality === "Годен") {
+          autoBatchCompleted += 1;
+          autoBatchErrorStreak = 0;
+        } else {
+          autoBatchErrorStreak += 1;
+        }
+        if (autoBatchCompleted >= autoBatchTarget) {
+          stopAutoBatch("Автоматическая серия завершена");
+        } else {
+          autoResumeWhenReady = true;
+          updateAutoUi();
+        }
+      }
+    }
+
+    function collectMeasurementDiagnostics(data) {
+      const currentState = Number(data.state);
+      if (calAutoRunning) {
+        lastControllerState = currentState;
+        return;
+      }
+      if (currentState !== 1) autoCommandPending = false;
+      if (currentState === 5 && lastControllerState !== 5) {
+        measurementCycleObserved = true;
+        measurementRecorded = false;
+        contactTraceCaptured = false;
+      }
+      const cycleReachedMeasurement = measurementCycleObserved;
+
+      if (measurementCycleObserved &&
+          !measurementRecorded &&
+          (currentState === 1 || currentState === 8) &&
+          lastControllerState !== null &&
+          lastControllerState !== 1 &&
+          lastControllerState !== 8) {
+        measurementRecorded = true;
+        if (!contactTraceCaptured) {
+          contactTraceCaptured = true;
+          const downMm = Number(data.saved_descent_mm) || 0;
+          const upMm = Number(data.saved_ascent_mm) || 0;
+          const traceNumber = contactTrace.reduce(
+            (maximum, item) => Math.max(maximum, Number(item.number) || 0),
+            0
+          ) + 1;
+          contactTrace.push({
+            number: traceNumber,
+            downMm,
+            upMm,
+            differenceMm: Math.max(0, Number(data.travel_difference_mm) || 0)
+          });
+          renderContactTrace();
+        }
+        const noAscentResult =
+          (Number(data.errors) & (2048 | 4096)) !== 0;
+        appendPendingMeasurement(
+          noAscentResult ? null : (Number(data.result_mm) || 0), data);
+        const ignoredBits = 32 | 1024 | 16;
+        const qualityErrors = Number(data.errors) & ~ignoredBits;
+        const note = (data.error_names || [])
+          .filter(name =>
+            name !== "Ошибка UART" &&
+            name !== "Расхождение хода вверх и вниз" &&
+            name !== "Тест Mot_FG: подъём не совпал с Enc")
+          .join("; ");
+        if (currentState === 8 && qualityErrors !== 0) {
+          finalizePendingMeasurement("Брак", note || "Ошибка контроллера");
+        } else {
+          finalizePendingMeasurement("Годен", note);
+        }
+      }
+      if (autoBatchActive && currentState === 8 && !autoRecoveryPending) {
+        const errors = Number(data.errors) & ~32;
+        const recoverableErrors = 16 | 512 | 2048 | 4096;
+        if (!cycleReachedMeasurement) {
+          stopAutoBatch("Автомат остановлен: проверка перед измерением не выполнена");
+        } else if ((errors & ~recoverableErrors) !== 0) {
+          stopAutoBatch("Автомат остановлен из-за аппаратной ошибки");
+        } else {
+          autoRecoveryPending = true;
+          command("clear_error").finally(() => {
+            setTimeout(() => { autoRecoveryPending = false; }, 500);
+          });
+        }
+      } else if (autoResumeWhenReady &&
+                 autoBatchActive &&
+                 currentState === 1 &&
+                 pendingMeasurementIndex === null &&
+                 !autoRecoveryPending) {
+        autoResumeWhenReady = false;
+        void issueNextAutoMeasurement();
+      }
+      lastControllerState = currentState;
+    }
+
+    function render(data) {
+      status = data;
+      const descentMm = Math.max(0, Number(data.descent_distance_mm) || 0);
+      collectMeasurementDiagnostics(data);
+      $("#connectionDot").classList.toggle("online", data.connected);
+      $("#connectionText").textContent = data.connected ? `${data.port}${data.simulated ? " (симулятор)" : ""}` : "Нет связи";
+      const stateNode = $("#state");
+      const simulationRunning =
+        Boolean(data.simulated) && Number(data.state) !== 1;
+      stateNode.textContent = data.simulated
+        ? (simulationRunning
+          ? `Идет симуляция измерения.. ${data.state_name}`
+          : "Симулятор готов")
+        : data.state_name;
+      stateNode.classList.toggle("simulation-running", simulationRunning);
+      const encCounts = Number(data.encoder);
+      const fgCounts = Number(data.fg_count);
+      const encMm = Number(data.distance_mm);
+      const motMm = Number(data.motor_distance_mm);
+
+      $("#encoderTest").textContent = encCounts;
+      $("#encoderMmWrap").classList.toggle("negative", encMm < 0);
+      $("#encoderMmWrap").classList.toggle("positive", encMm > 0);
+      $("#encoderDistance").textContent = encMm.toFixed(1);
+      $("#encoderPulsesWrap").classList.toggle("negative", encCounts < 0);
+      $("#encoderPulsesWrap").classList.toggle("positive", encCounts > 0);
+      $("#encoderSpeed").textContent = data.encoder_speed_cps;
+
+      $("#motorEncoderTest").textContent = fgCounts;
+      $("#motorMmWrap").classList.toggle("negative", motMm < 0);
+      $("#motorMmWrap").classList.toggle("positive", motMm > 0);
+      $("#motorDistance").textContent = motMm.toFixed(1);
+      $("#motorPulsesWrap").classList.toggle("negative", fgCounts < 0);
+      $("#motorPulsesWrap").classList.toggle("positive", fgCounts > 0);
+
+      let desynced = false;
+      if (Math.abs(encCounts) > 50 || Math.abs(fgCounts) > 3) {
+        if (encCounts !== 0 && fgCounts !== 0 && encCounts * fgCounts < 0) {
+          desynced = true;
+        } else if (Math.abs(encMm) > 10 && Math.abs(motMm) > 10 && encMm * motMm < 0) {
+          desynced = true;
+        } else if (Math.abs(encCounts) > 200 && Math.abs(fgCounts) > 10) {
+          const ratio = Math.abs(encMm / motMm);
+          if (!Number.isFinite(ratio) || ratio > 2.5 || ratio < 0.4) desynced = true;
+        }
+      }
+      $("#encoderSyncWarn").classList.toggle("visible", desynced);
+      const encoderDelta = previousEncoder === null ? 0 : data.encoder - previousEncoder;
+      const motion = $("#encoderMotion");
+      motion.classList.toggle("positive", encoderDelta > 0);
+      motion.classList.toggle("negative", encoderDelta < 0);
+      motion.textContent = encoderDelta > 0
+        ? `Вперёд: +${encoderDelta}`
+        : encoderDelta < 0
+          ? `Назад: ${encoderDelta}`
+          : "Без движения";
+      previousEncoder = data.encoder;
+      $("#pwm").textContent = `${(data.pwm / 10).toFixed(1)} %`;
+      $("#direction").textContent = data.motor_enabled ? (data.motor_up ? "Вверх" : "Вниз") : "Стоп";
+      $("#measurements").textContent = data.measurement_count;
+      const resultMm = Number(data.result_mm) || 0;
+      const currentState = Number(data.state);
+      $("#descentDistance").textContent = `${descentMm.toFixed(1)} мм`;
+      $("#ascentDistance").textContent =
+        `${Number(data.ascent_distance_mm).toFixed(1)} мм`;
+      $("#storedResult").textContent = `${resultMm.toFixed(1)} мм`;
+      $("#travelDifference").textContent =
+        `${Number(data.travel_difference_mm).toFixed(1)} мм`;
+      $("#calRawMm").textContent = rawEncoderMm(data.encoder).toFixed(1);
+      $("#calRawPulses").textContent = String(encCounts);
+      const currentStateForCal = Number(data.state);
+      const latchedDownCounts = Math.abs(Number(data.distance) || 0);
+      if (calAutoRunning && latchedDownCounts > 0) {
+        calibrationDownCounts = latchedDownCounts;
+      }
+      const downCounts = calibrationDownCounts ??
+        (currentStateForCal === 5 ? Math.abs(encCounts) : 0);
+      const upCountsLive = [6, 7, 14, 15].includes(currentStateForCal) &&
+        downCounts > 0
+        ? Math.max(0, downCounts - Math.abs(encCounts))
+        : 0;
+      const upCounts = upCountsLive > 0
+        ? upCountsLive
+        : (calibrationUpCounts ?? 0);
+      const latchedDownFgMm =
+        Math.abs(Number(data.descent_motor_distance_mm) || 0);
+      if (calAutoRunning && latchedDownFgMm > 0) {
+        calibrationDownFgCounts = Math.round(
+          latchedDownFgMm / (MOTOR_MM_PER_PULSE * motorCalFactor()));
+      } else if (calAutoRunning && currentStateForCal === 5 &&
+                 Math.abs(fgCounts) > 0) {
+        calibrationDownFgCounts = Math.abs(fgCounts);
+      }
+      const downFgCounts = calibrationDownFgCounts ??
+        (currentStateForCal === 5 ? Math.abs(fgCounts) : 0);
+      const upFgCountsLive = [6, 7, 14, 15].includes(currentStateForCal) &&
+        downFgCounts > 0
+        ? Math.max(0, downFgCounts - Math.abs(fgCounts))
+        : 0;
+      const upFgCounts = upFgCountsLive > 0
+        ? upFgCountsLive
+        : (calibrationUpFgCounts ?? 0);
+      const encFactor = encCalFactor();
+      const fgFactor = motorCalFactor();
+      const encDownMm = downCounts > 0 ? calibratedPulsesToMm(downCounts) : 0;
+      const encUpMm = upCounts > 0 ? calibratedPulsesToMm(upCounts) : 0;
+      const fgDownMm = calibratedFgToMm(downFgCounts);
+      const fgUpMm = calibratedFgToMm(upFgCounts);
+      $("#calLiveState").textContent = data.state_name || "—";
+      $("#calLiveStage").textContent = calAutoRunning
+        ? (calibrationTestRunning
+          ? `Контрольный замер: ${data.state_name || "подготовка"}`
+          : currentStateForCal === 1 && calibrationDownCounts !== null
+            ? "7/7 Расчёт и запись коэффициента"
+            : calibrationStage(currentStateForCal))
+        : "Ожидание";
+      $("#calLiveGround").textContent = data.ground_detect
+        ? "СРАБОТАЛ (0 В)"
+        : "Свободен (3,3 В)";
+      $("#calLiveMotor").textContent = data.motor_enabled
+        ? `${data.motor_up ? "Вверх" : "Вниз"}, ${(Number(data.pwm) / 10).toFixed(1)} %`
+        : "Стоп";
+      $("#calEncDown").textContent =
+        encoderLine(downCounts, encDownMm, encFactor);
+      $("#calEncUp").textContent =
+        encoderLine(upCounts, encUpMm, encFactor);
+      $("#calFgDown").textContent =
+        encoderLine(downFgCounts, fgDownMm, fgFactor);
+      $("#calFgUp").textContent =
+        encoderLine(upFgCounts, fgUpMm, fgFactor);
+      $("#calEncoderCompare").textContent = (encUpMm > 0 || fgUpMm > 0)
+        ? `Enc ${encUpMm.toFixed(1)} мм · Mot_FG ${fgUpMm.toFixed(1)} мм · ` +
+          `Δ ${Math.abs(encUpMm - fgUpMm).toFixed(1)} мм`
+        : "—";
+      $("#calLiveCalResult").textContent = lastCalResultText;
+      $("#calLiveTestResult").textContent = lastTestResultText;
+      const visibleErrors = (data.error_names || [])
+        .filter(name =>
+          name !== "Ошибка UART" &&
+          name !== "Расхождение хода вверх и вниз" &&
+          name !== "Тест Mot_FG: подъём не совпал с Enc");
+      const faultState = currentState === 8;
+      $("#errors").textContent = visibleErrors.length
+        ? visibleErrors.join("; ")
+        : faultState
+          ? "Контроллер в ошибке — нажмите «Сброс ошибки»"
+          : "Ошибок нет";
+      $("#errors").style.color = (visibleErrors.length || faultState)
+        ? "var(--danger)"
+        : "";
+      const periodicActive = Boolean(data.auto);
+      $("#periodicModeBtn").textContent = periodicActive
+        ? "Остановить периодический режим"
+        : "Запустить периодический режим";
+      $("#periodicModeBtn").classList.toggle("active", periodicActive);
+      $("#periodicModeState").textContent = periodicActive
+        ? `Включен: первый замер сразу, затем каждые ${$("#periodicIntervalMinutes").value} мин`
+        : "Режим выключен";
+      $("#simulationModeBtn").textContent = data.simulated
+        ? "Выйти из симуляции"
+        : "Симуляция";
+      $("#simulationModeBtn").classList.toggle(
+        "active", Boolean(data.simulated));
+      $("#reportPathText").textContent = data.simulated
+        ? "Учебный отчёт: отчеты/симулятор/ГГГГ-ММ-ДД.csv"
+        : "Отчёт: отчеты/ГГГГ-ММ-ДД.csv";
+      document.querySelectorAll("button").forEach(button => {
+        if (button.closest("#bunkerConfig")) return;
+        if (button.id === "measurementsToggleBtn" ||
+            button.id === "settingsToggleBtn" ||
+            button.id === "calToggleBtn" ||
+            button.id === "journalToggleBtn" ||
+            button.id === "bunkerSettingsToggleBtn" ||
+            button.id === "homeCloseBtn" ||
+            button.id === "resetMeasurements" ||
+            button.id === "simulationModeBtn" ||
+            button.id === "soundModeBtn") {
+          return;
+        }
+        button.disabled = !data.connected;
+      });
+      $("#simulationModeBtn").disabled = false;
+      $("#soundModeBtn").disabled = false;
+      $("#calAutoStart").disabled =
+        !data.connected || periodicActive || calAutoRunning || singleMeasureRunning;
+      $("#singleMeasureBtn").disabled =
+        !data.connected || periodicActive || calAutoRunning || singleMeasureRunning;
+      $("#singleMeasureBunkerBtn").disabled =
+        !data.connected || periodicActive || calAutoRunning || singleMeasureRunning;
+      $("#calMeasurementSource").disabled =
+        !data.connected || periodicActive || calAutoRunning || singleMeasureRunning ||
+        Number(data.state) !== 1;
+      $("#workMeasurementSource").disabled =
+        !data.connected || periodicActive || calAutoRunning ||
+        singleMeasureRunning || Number(data.state) !== 1;
+      const calibrationEditDisabled =
+        !data.connected || periodicActive || calAutoRunning || singleMeasureRunning ||
+        Number(data.state) !== 1;
+      $("#lengthCalFactorInput").disabled = calibrationEditDisabled;
+      $("#motorCalFactorInput").disabled = calibrationEditDisabled;
+      $("#calSaveFactors").disabled = calibrationEditDisabled;
+      $("#autoStart").disabled =
+        !data.connected || periodicActive ||
+        (!autoBatchActive && Number(data.state) !== 1);
+      $("#autoMeasureCount").disabled = autoBatchActive;
+      $("#periodicModeBtn").disabled =
+        !data.connected || autoBatchActive ||
+        (!periodicActive && Number(data.state) !== 1);
+      $("#periodicIntervalMinutes").disabled = periodicActive;
+      const manualSpeedField = $("#manualSpeedPercent");
+      if (manualSpeedField) manualSpeedField.disabled = !data.connected;
+      setBunkerTarget(encMm);
+      syncMotorSound(data);
+    }
+
+    async function poll() {
+      try { render(await api("/api/status")); }
+      catch (_) { render({ ...status, connected: false, state_name: "Нет связи", error_names: [] }); }
+    }
+
+    async function loadConfig(force = false) {
+      try {
+        const config = await api("/api/config");
+        if (!configDirty || force) {
+          applyConfigToForm(config);
+          configDirty = false;
+        }
+        if (force) {
+          calDirty = false;
+          updateCalDisplay(config);
+        }
+      } catch (error) { toast(error.message); }
+    }
+
+    async function loadCalibrationCapture() {
+      if (!status.connected || calAutoRunning || singleMeasureRunning ||
+          Number(status.state) !== 1) {
+        return;
+      }
+      try {
+        const capture = await api("/api/calibration-capture");
+        if (capture.down_valid && capture.up_valid) {
+          showCalibrationCapture(capture);
+        }
+      } catch (_) {}
+    }
+
+    async function loadEvents() {
+      try {
+        const events = await api("/api/events");
+        $("#events").innerHTML = events.length ? events.map(event =>
+          `<tr><td>${event.created}</td><td>${event.kind}</td><td>${event.message}</td></tr>`
+        ).join("") : '<tr><td colspan="3">Событий пока нет</td></tr>';
+      } catch (_) {}
+    }
+
+    async function loadApplicationVersion() {
+      try {
+        const data = await api("/api/version");
+        $("#appVersion").textContent = `Версия ${data.version}`;
+        document.title = `Лотовый датчик ${data.version}`;
+      } catch (_) {
+        $("#appVersion").textContent = "Версия dev";
+      }
+    }
+
+    document.querySelectorAll("[data-action]").forEach(button =>
+      button.addEventListener("click", () => command(button.dataset.action)));
+    $("#periodicModeBtn").addEventListener("click", () => {
+      void togglePeriodicMode().catch(error => toast(error.message));
+    });
+    $("#simulationModeBtn").addEventListener("click", () => {
+      void toggleSimulationMode().catch(error => toast(error.message));
+    });
+    $("#soundModeBtn").addEventListener("click", () => {
+      soundEnabled = !soundEnabled;
+      localStorage.setItem(SOUND_STORAGE_KEY, soundEnabled ? "1" : "0");
+      updateSoundButton();
+      if (!soundEnabled) {
+        stopMotorSound();
+        return;
+      }
+      void ensureAudioContext().then(() => syncMotorSound(status));
+    });
+    document.addEventListener("pointerdown", () => {
+      if (soundEnabled) {
+        void ensureAudioContext().then(() => syncMotorSound(status));
+      }
+    }, { once: true });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        stopMotorSound();
+      } else if (soundEnabled) {
+        void ensureAudioContext().then(() => syncMotorSound(status));
+      }
+    });
+    $("#autoStart").addEventListener("click", () => {
+      if (autoBatchActive) {
+        stopAutoBatch("Автомат остановлен оператором");
+        return;
+      }
+      if (Boolean(status.auto)) {
+        toast("Сначала остановите периодический режим");
+        return;
+      }
+      if (Number(status.state) !== 1) {
+        toast("Автомат можно запустить только после сигнала «Готов»");
+        return;
+      }
+      const target = Number($("#autoMeasureCount").value);
+      if (!Number.isInteger(target) || target < 1 || target > 1000) {
+        toast("Количество автоматических замеров: 1…1000");
+        return;
+      }
+      autoBatchTarget = target;
+      autoBatchCompleted = 0;
+      autoBatchErrorStreak = 0;
+      autoBatchActive = true;
+      updateAutoUi();
+      void issueNextAutoMeasurement();
+    });
+    function resetSimulationUi() {
+      stopAutoBatch("");
+      calAutoRunning = false;
+      calibrationTestRunning = false;
+      singleMeasureRunning = false;
+      completedMeasurements = [];
+      pendingMeasurementIndex = null;
+      contactTrace = [];
+      measurementCycleObserved = false;
+      measurementRecorded = false;
+      calibrationDownCounts = null;
+      calibrationUpCounts = null;
+      calibrationDownFgCounts = null;
+      calibrationUpFgCounts = null;
+      lastCalResultText = "—";
+      lastTestResultText = "—";
+      saveCompletedMeasurements();
+      renderCompletedMeasurements();
+      renderContactTrace();
+      updateAutoUi();
+    }
+
+    $("#resetMeasurements").addEventListener("click", () => {
+      completedMeasurements = [];
+      pendingMeasurementIndex = null;
+      contactTrace = [];
+      saveCompletedMeasurements();
+      renderCompletedMeasurements();
+      renderContactTrace();
+    });
+
+    function loadManualSpeedFromStorage() {
+      const field = $("#manualSpeedPercent");
+      if (!field) return;
+      const stored = localStorage.getItem(MANUAL_SPEED_STORAGE_KEY);
+      if (stored !== null && stored !== "") {
+        field.value = stored;
+      }
+      sendManualSpeed(Number(field.value), false);
+    }
+
+    function sendManualSpeed(value, persist = true) {
+      const field = $("#manualSpeedPercent");
+      if (!field || !Number.isFinite(value)) return;
+      const clamped = Math.max(0, Math.min(100, Math.round(value)));
+      field.value = clamped;
+      if (persist) {
+        localStorage.setItem(MANUAL_SPEED_STORAGE_KEY, String(clamped));
+      }
+      clearTimeout(manualSpeedSendTimer);
+      manualSpeedSendTimer = setTimeout(
+        () => command("manual_pwm", { value: clamped }),
+        120
+      );
+    }
+
+    $("#manualSpeedPercent").addEventListener("input", event => {
+      sendManualSpeed(Number(event.target.value));
+    });
+    $("#manualSpeedPercent").addEventListener("change", event => {
+      sendManualSpeed(Number(event.target.value));
+    });
+
+    for (const [selector, action] of [["#up", "up"], ["#down", "down"]]) {
+      const button = $(selector);
+      button.addEventListener("pointerdown", event => { event.preventDefault(); button.setPointerCapture(event.pointerId); command(action); });
+      button.addEventListener("pointerup", () => command("stop"));
+      button.addEventListener("pointercancel", () => command("stop"));
+      button.addEventListener("lostpointercapture", () => {
+        if (status.motor_enabled) command("stop");
+      });
+    }
+
+    $("#calMeasurementSource").addEventListener("change", event => {
+      void setMeasurementSource(event.target.value)
+        .catch(error => {
+          event.target.value =
+            Number(lastDeviceConfig.motor_encoder_enabled) !== 0 ? "1" : "0";
+          toast(error.message);
+        });
+    });
+    $("#workMeasurementSource").addEventListener("change", event => {
+      void setMeasurementSource(event.target.value)
+        .catch(error => {
+          event.target.value =
+            Number(lastDeviceConfig.motor_encoder_enabled) !== 0 ? "1" : "0";
+          toast(error.message);
+        });
+    });
+
+    ["lengthCalFactorInput", "lengthCalOffsetInput", "motorCalFactorInput"].forEach(id => {
+      $("#" + id).addEventListener("input", () => { calDirty = true; });
+    });
+    $("#calResultOffsetMm").addEventListener("input", () => {
+      $("#lengthCalOffsetInput").value = Number($("#calResultOffsetMm").value).toFixed(1);
+      calDirty = true;
+    });
+    $("#calResultOffsetMm").addEventListener("change", () => {
+      void saveCalResultOffset()
+        .then(() => toast("Поправка записана в контроллер"))
+        .catch(error => toast(error.message));
+    });
+    $("#calSaveFactors").addEventListener("click", async () => {
+      try {
+        await saveCalFactors();
+        toast("Коэффициенты записаны в контроллер");
+      } catch (error) { toast(error.message); }
+    });
+    async function resetCalibrationEncoders() {
+      try {
+        await command("reset_encoders");
+        previousEncoder = null;
+        linearCalPointA = { enc: 0, mm: 0 };
+        updateLinearPointHint();
+        toast("Энкодеры обнулены");
+      } catch (error) { toast(error.message); }
+    }
+    $("#calResetEncoders").addEventListener("click", resetCalibrationEncoders);
+    async function waitForControllerState(testFn, timeoutMs = 180000) {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const data = await api("/api/status");
+        render(data);
+        if (Number(data.state) === 8) {
+          const note = (data.error_names || [])
+            .filter(name => name !== "Ошибка UART")
+            .join("; ");
+          throw new Error(note || "Контроллер в ошибке");
+        }
+        if (Number(data.state) === 16 || data.interlock_active) {
+          throw new Error("Измерение запрещено работающим механизмом");
+        }
+        if (testFn(data)) return data;
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+      throw new Error("Истекло время ожидания контроллера");
+    }
+    async function runAutoLengthCalibration() {
+      if (calAutoRunning || singleMeasureRunning) return;
+      const referenceMm = Number($("#calReferenceMm").value);
+      if (!Number.isFinite(referenceMm) || referenceMm < 10) {
+        toast("Введите эталонный путь не меньше 10 мм");
+        return;
+      }
+      const loadHeightMm = Number(lastDeviceConfig.load_height_mm) || 0;
+      if (referenceMm <= loadHeightMm) {
+        toast("Эталон должен быть больше высоты груза");
+        return;
+      }
+      if (!status.connected) {
+        toast("Нет связи с контроллером");
+        return;
+      }
+      if (Number(status.state) !== 1 && Number(status.state) !== 8) {
+        toast("Тарировка запускается только из режима «Готов»");
+        return;
+      }
+      if (status.ground_detect) {
+        toast("PB12 уже сработал — освободите датчик перед тарировкой");
+        return;
+      }
+      calAutoRunning = true;
+      calibrationDownCounts = null;
+      calibrationUpCounts = null;
+      calibrationDownFgCounts = null;
+      calibrationUpFgCounts = null;
+      const statusLine = $("#calAutoStatus");
+      const resultLine = $("#calAutoResult");
+      resultLine.textContent = "Коэффициент Enc: … · Mot_FG: …";
+      try {
+        if (Number(status.state) === 8) {
+          statusLine.textContent = "Сброс ошибки…";
+          await command("clear_error");
+          await waitForControllerState(d => Number(d.state) === 1, 15000);
+        }
+        statusLine.textContent = "Подготовка: обнуление старых поправок вверх/вниз…";
+        const freshConfig = await api("/api/config");
+        if (Number(freshConfig.descent_correction_mm) !== 0 ||
+            Number(freshConfig.ascent_correction_mm) !== 0) {
+          freshConfig.descent_correction_mm = 0;
+          freshConfig.ascent_correction_mm = 0;
+          await api("/api/config", {
+            method: "POST",
+            body: JSON.stringify(freshConfig)
+          });
+        }
+        lastDeviceConfig = { ...freshConfig };
+        updateCalDisplay(lastDeviceConfig);
+
+        statusLine.textContent = "1/7 Запуск парковки…";
+        const accepted = await command("measure_auto");
+        if (!accepted) {
+          throw new Error("контроллер не принял команду тарировки");
+        }
+        await waitForControllerState(
+          d => MOTION_STATES.includes(Number(d.state)),
+          120000);
+        statusLine.textContent =
+          "Цикл выполняется: вниз до PB12, затем полный подъём до упора…";
+        await waitForControllerState(d => Number(d.state) === 1, 300000);
+
+        const capture = await api("/api/calibration-capture");
+        if (!capture.down_valid || !capture.up_valid) {
+          throw new Error("контроллер не зафиксировал полный ход вниз/вверх");
+        }
+        const rawDown = Math.abs(Number(capture.raw_down_counts));
+        const rawUp = Math.abs(Number(capture.raw_up_counts));
+        const rawDownFg = Math.abs(Number(capture.raw_down_fg_count));
+        const rawUpFg = Math.abs(Number(capture.raw_up_fg_count));
+        if (rawUp <= 0) {
+          throw new Error("нет импульсов подъёма Enc");
+        }
+        calibrationDownCounts = rawDown;
+        calibrationDownFgCounts = rawDownFg;
+        statusLine.textContent =
+          `7/7 Зафиксировано вверх ${rawUp} имп. ` +
+          `(${rawEncoderMm(rawUp).toFixed(1)} мм). Запись коэффициента…`;
+
+        const encResult = await api("/api/calibrate", {
+          method: "POST",
+          body: JSON.stringify({
+            mode: "manual",
+            reference_mm: referenceMm,
+            encoder: rawUp,
+          }),
+        });
+        lastDeviceConfig.length_cal_x10000 = encResult.length_cal_x10000;
+        let motorNote = "нет импульсов";
+        if (rawUpFg > 0) {
+          const motResult = await api("/api/calibrate", {
+            method: "POST",
+            body: JSON.stringify({
+              mode: "motor_fg",
+              reference_mm: referenceMm,
+              fg_count: rawUpFg,
+            }),
+          });
+          lastDeviceConfig.motor_cal_x10000 = motResult.motor_cal_x10000;
+          motorNote = Number(motResult.motor_cal_factor).toFixed(4);
+        } else if (Number(lastDeviceConfig.motor_encoder_enabled) !== 0) {
+          throw new Error("Mot_FG выбран основным, но не выдаёт импульсы");
+        }
+        calDirty = false;
+        updateCalDisplay(lastDeviceConfig);
+        await loadConfig(true);
+        showCalibrationCapture(capture);
+        const calMm =
+          (calibratedPulsesToMm(rawUp) + loadHeightMm).toFixed(1);
+        const rawDownMm = rawEncoderMm(rawDown);
+        const rawUpMm = rawEncoderMm(rawUp);
+        const rawDifferenceMm = Math.abs(rawUpMm - rawDownMm);
+        lastCalResultText =
+          `эталон ${referenceMm.toFixed(1)} → ${calMm} мм; ` +
+          `вверх ${rawUp} имп., вниз ${rawDown} имп., ` +
+          `разница ${rawDifferenceMm.toFixed(1)} мм`;
+        resultLine.textContent =
+          `Enc ${Number(encResult.length_cal_factor).toFixed(4)} · Mot_FG ${motorNote}`;
+
+        calibrationTestRunning = true;
+        statusLine.textContent =
+          "Коэффициент записан. Автоматический контрольный замер…";
+        const testAccepted = await command("measure_auto");
+        if (!testAccepted) {
+          throw new Error("коэффициент записан, но контрольный замер не запущен");
+        }
+        await waitForControllerState(
+          d => MOTION_STATES.includes(Number(d.state)),
+          120000);
+        await waitForControllerState(
+          d => Number(d.state) === 1,
+          300000);
+        const testCapture = await api("/api/calibration-capture");
+        showCalibrationCapture(testCapture);
+        const testEncMm = calibratedPulsesToMm(
+          Math.abs(Number(testCapture.raw_up_counts) || 0));
+        const testFgMm = calibratedFgToMm(
+          Math.abs(Number(testCapture.raw_up_fg_count) || 0));
+        const testPathMm =
+          Number(lastDeviceConfig.motor_encoder_enabled) !== 0
+            ? testFgMm
+            : testEncMm;
+        const testMm = testPathMm + loadHeightMm;
+        const testErrorMm = testMm - referenceMm;
+        lastTestResultText =
+          `${testMm.toFixed(1)} мм; отклонение ` +
+          `${testErrorMm >= 0 ? "+" : ""}${testErrorMm.toFixed(1)} мм; ` +
+          `Enc ${testEncMm.toFixed(1)} · Mot_FG ${testFgMm.toFixed(1)}`;
+        lastCalResultText += `; тест ${lastTestResultText}`;
+        statusLine.textContent = `Готово: ${lastCalResultText}`;
+        resultLine.textContent += ` · тест ${testMm.toFixed(1)} мм`;
+        toast(`Тарировка готова. Контрольный замер: ${testMm.toFixed(1)} мм`);
+      } catch (error) {
+        statusLine.textContent = `Ошибка: ${error.message}`;
+        toast(error.message);
+        try { await command("stop"); } catch (_) {}
+      } finally {
+        calibrationTestRunning = false;
+        calAutoRunning = false;
+      }
+    }
+
+    async function runSingleMeasure() {
+      if (calAutoRunning || singleMeasureRunning) return;
+      if (!status.connected) {
+        toast("Нет связи с контроллером");
+        return;
+      }
+      if (Number(status.state) !== 1) {
+        toast("Один замер — только из режима «Готов»");
+        return;
+      }
+      singleMeasureRunning = true;
+      calibrationDownCounts = null;
+      calibrationUpCounts = null;
+      calibrationDownFgCounts = null;
+      calibrationUpFgCounts = null;
+      const statusLine = $("#calAutoStatus");
+      try {
+        if (calDirty) {
+          statusLine.textContent =
+            "Запись новых коэффициентов Enc и Mot_FG…";
+          await saveCalFactors();
+          await loadConfig(true);
+          statusLine.textContent =
+            "Коэффициенты записаны. Подготовка измерения…";
+        }
+        if (Number(status.state) === 8) {
+          await command("clear_error");
+          await waitForControllerState(d => Number(d.state) === 1, 15000);
+        }
+        statusLine.textContent = "1 замер: парковка и ход до грунта…";
+        measurementCycleObserved = false;
+        measurementRecorded = false;
+        const accepted = await command("measure_auto");
+        if (!accepted) {
+          throw new Error("контроллер не принял команду замера");
+        }
+        await waitForControllerState(
+          d => MOTION_STATES.includes(Number(d.state)),
+          120000);
+        const finished = await waitForControllerState(
+          d => Number(d.state) === 1,
+          300000);
+        const capture = await api("/api/calibration-capture");
+        showCalibrationCapture(capture);
+        const resultMm = Number(finished.result_mm) || 0;
+        const encResultMm = calibratedPulsesToMm(
+          Math.abs(Number(capture.raw_up_counts) || 0));
+        const fgResultMm = calibratedFgToMm(
+          Math.abs(Number(capture.raw_up_fg_count) || 0));
+        lastTestResultText =
+          `${resultMm.toFixed(1)} мм · Enc ${encResultMm.toFixed(1)} · ` +
+          `Mot_FG ${fgResultMm.toFixed(1)} · ` +
+          `Δ ${Math.abs(encResultMm - fgResultMm).toFixed(1)} мм`;
+        statusLine.textContent = `1 замер завершён: ${lastTestResultText}`;
+        toast(`Результат замера: ${resultMm.toFixed(1)} мм`);
+        if (Number(finished.state) === 8) {
+          const note = (finished.error_names || [])
+            .filter(name => name !== "Ошибка UART")
+            .join("; ");
+          if (note) toast(note);
+          try { await command("clear_error"); } catch (_) {}
+        }
+      } catch (error) {
+        statusLine.textContent = `Ошибка замера: ${error.message}`;
+        toast(error.message);
+        try { await command("stop"); } catch (_) {}
+      } finally {
+        singleMeasureRunning = false;
+      }
+    }
+
+    $("#calAutoStart").addEventListener("click", () => {
+      void runAutoLengthCalibration();
+    });
+    $("#singleMeasureBtn").addEventListener("click", () => {
+      void runSingleMeasure();
+    });
+    $("#singleMeasureBunkerBtn").addEventListener("click", () => {
+      void runSingleMeasure();
+    });
+    $("#calLinearPointA").addEventListener("click", () => {
+      linearCalPointA = {
+        enc: Number(status.encoder),
+        mm: Number(status.motor_distance_mm)
+      };
+      updateLinearPointHint();
+      toast("Точка A сохранена");
+    });
+    async function applyLinearEncCal(payload) {
+      const result = await api("/api/calibrate", {
+        method: "POST",
+        body: JSON.stringify({ mode: "linear_enc", ...payload })
+      });
+      lastDeviceConfig.length_cal_x10000 = result.length_cal_x10000;
+      lastDeviceConfig.length_cal_offset_tenth_mm = result.length_cal_offset_tenth_mm;
+      calDirty = false;
+      updateCalDisplay(lastDeviceConfig);
+      toast(
+        `Enc y=ax+b: a=${Number(result.length_cal_factor).toFixed(4)}, ` +
+        `b=${Number(result.length_cal_offset_mm).toFixed(1)} мм`
+      );
+      await loadConfig(true);
+    }
+    $("#calLinearEnc").addEventListener("click", async () => {
+      if (!linearCalPointA) {
+        toast("Сначала задайте точку A (ноль)");
+        return;
+      }
+      try {
+        await applyLinearEncCal({
+          enc1: linearCalPointA.enc,
+          mm1: linearCalPointA.mm,
+          enc2: Number(status.encoder),
+          mm2: Number(status.motor_distance_mm)
+        });
+      } catch (error) { toast(error.message); }
+    });
+    $("#calCalculate").addEventListener("click", async () => {
+      try {
+        const payload = {
+          mode: "manual",
+          reference_mm: Number($("#calReferenceMm").value),
+          encoder: status.encoder
+        };
+        const result = await api("/api/calibrate", { method: "POST", body: JSON.stringify(payload) });
+        lastDeviceConfig.length_cal_x10000 = result.length_cal_x10000;
+        calDirty = false;
+        updateCalDisplay(lastDeviceConfig);
+        toast(`Enc коэфф.: ${Number(result.length_cal_factor).toFixed(4)}`);
+        await loadConfig(true);
+      } catch (error) { toast(error.message); }
+    });
+    $("#calAutoCalculate").addEventListener("click", async () => {
+      try {
+        const payload = {
+          mode: "auto",
+          shaft_diameter_mm: Number($("#calShaftMm").value)
+        };
+        const result = await api("/api/calibrate", { method: "POST", body: JSON.stringify(payload) });
+        lastDeviceConfig.length_cal_x10000 = result.length_cal_x10000;
+        calDirty = false;
+        updateCalDisplay(lastDeviceConfig);
+        toast(`Enc коэфф.: ${Number(result.length_cal_factor).toFixed(4)}`);
+        await loadConfig(true);
+      } catch (error) { toast(error.message); }
+    });
+    $("#calMotorFg").addEventListener("click", async () => {
+      try {
+        const payload = {
+          mode: "motor_fg",
+          reference_mm: Number(status.distance_mm),
+          fg_count: Number(status.fg_count),
+          reference_includes_load_height: false
+        };
+        const result = await api("/api/calibrate", { method: "POST", body: JSON.stringify(payload) });
+        lastDeviceConfig.motor_cal_x10000 = result.motor_cal_x10000;
+        calDirty = false;
+        updateCalDisplay(lastDeviceConfig);
+        toast(`Mot_FG коэфф.: ${Number(result.motor_cal_factor).toFixed(4)}`);
+        await loadConfig(true);
+      } catch (error) { toast(error.message); }
+    });
+
+    $("#deviceConfig").addEventListener("submit", event => {
+      event.preventDefault();
+    });
+    $("#deviceConfig").addEventListener("input", () => {
+      configDirty = true;
+    });
+    $("#deviceConfig").addEventListener("change", () => {
+      configDirty = true;
+      void saveSettings();
+    });
+
+    function updateBunkerFromCurrentStatus() {
+      showBunker(bunkerVisualMm());
+    }
+
+    function syncFillLevelSlider() {
+      const slider = $("#fillLevelSlider");
+      const maximum = Math.max(0, Math.min(
+        100, Number(bunkerConfig.maxFillPercent)));
+      bunkerConfig.targetFillPercent = Math.max(0, Math.min(
+        maximum, Number(bunkerConfig.targetFillPercent)));
+      slider.max = maximum.toFixed(1);
+      slider.value = Number(bunkerConfig.targetFillPercent).toFixed(1);
+      slider.title =
+        `Заданный уровень: ${Number(bunkerConfig.targetFillPercent).toFixed(1)} %`;
+      slider.setAttribute(
+        "aria-valuetext",
+        `${Number(bunkerConfig.targetFillPercent).toFixed(1)} %`
+      );
+      const baseHeightM =
+        Number(bunkerConfig.lowerHeightM) +
+        Number(bunkerConfig.cylinderHeightM);
+      $("#sensorBaseHeight").textContent =
+        `${baseHeightM.toFixed(3)} м (${(baseHeightM * 1000).toFixed(0)} мм)`;
+    }
+
+    function syncInlineBunkerDimensions() {
+      const panel = $("#bunkerInlineDimensions");
+      if (!panel) return;
+      panel.querySelectorAll("[data-bunker-key]").forEach(field => {
+        const key = field.dataset.bunkerKey;
+        if (document.activeElement !== field) {
+          field.value = Number(bunkerConfig[key]).toFixed(
+            key === "loadOffsetMm" ? 0 : 2);
+        }
+      });
+      const radiusField = panel.querySelector("[data-bunker-radius]");
+      if (radiusField && document.activeElement !== radiusField) {
+        radiusField.value =
+          (Number(bunkerConfig.lowerBottomDiameterM) / 2).toFixed(2);
+      }
+      const lowerTop = Number(bunkerConfig.lowerHeightM);
+      const cylinderTop =
+        lowerTop + Number(bunkerConfig.cylinderHeightM);
+      const bunkerTop =
+        cylinderTop + Number(bunkerConfig.upperHeightM);
+      $("#bunkerLowerTopMark").textContent = `${lowerTop.toFixed(2)} м`;
+      $("#bunkerCylinderTopMark").textContent =
+        `${cylinderTop.toFixed(2)} м`;
+      $("#bunkerTopMark").textContent = `${bunkerTop.toFixed(2)} м`;
+    }
+
+    function applyBunkerConfigToForm() {
+      Object.entries(bunkerConfig).forEach(([key, value]) => {
+        const field = document.querySelector(`#bunkerConfig [name="${key}"]`);
+        if (field) field.value = value;
+      });
+      syncInlineBunkerDimensions();
+      syncFillLevelSlider();
+      updateBunkerFromCurrentStatus();
+    }
+
+    function validateBunkerConfig(next) {
+      if (next.upperTopDiameterM > next.bunkerDiameterM ||
+          next.lowerBottomDiameterM > next.bunkerDiameterM) {
+        throw new Error(
+          "Диаметры верхнего и нижнего отверстий не могут быть больше диаметра бункера"
+        );
+      }
+      if (next.loadOffsetMm > next.bunkerDiameterM * 1000) {
+        throw new Error("Расстояние груза от стенки больше диаметра бункера");
+      }
+    }
+
+    async function saveBunkerConfig(showMessage = true) {
+      try {
+        validateBunkerConfig(bunkerConfig);
+        await api("/api/bunker-config", {
+          method: "POST",
+          body: JSON.stringify(bunkerConfigToDevice(bunkerConfig))
+        });
+        bunkerConfigDirty = false;
+        if (showMessage) {
+          toast(status.simulated
+            ? "Настройки учебного бункера сохранены"
+            : "Настройки бункера записаны в контроллер");
+        }
+      } catch (error) {
+        toast(error.message);
+      }
+    }
+
+    async function loadBunkerConfig(force = false) {
+      if (bunkerConfigDirty && !force) return;
+      try {
+        bunkerConfig = bunkerConfigFromDevice(
+          await api("/api/bunker-config")
+        );
+        bunkerConfigDirty = false;
+        applyBunkerConfigToForm();
+      } catch (error) {
+        if (force) toast(error.message);
+      }
+    }
+
+    applyBunkerConfigToForm();
+    $("#bunkerConfig").addEventListener("input", event => {
+      if (event.target.value === "") return;
+      const preview = Object.fromEntries(
+        new FormData(event.currentTarget)
+      );
+      Object.keys(preview).forEach(
+        key => preview[key] = Number(preview[key])
+      );
+      preview.targetFillPercent = Math.min(
+        preview.maxFillPercent,
+        Number(bunkerConfig.targetFillPercent)
+      );
+      try {
+        validateBunkerConfig(preview);
+        bunkerConfig = preview;
+        bunkerConfigDirty = true;
+        syncInlineBunkerDimensions();
+        syncFillLevelSlider();
+        updateBunkerFromCurrentStatus();
+      } catch (_) {
+        // Keep the last valid drawing until the field is valid again.
+      }
+    });
+    $("#bunkerConfig").addEventListener("submit", event => {
+      event.preventDefault();
+      if (bunkerConfigDirty) void saveBunkerConfig();
+    });
+    $("#bunkerConfig").addEventListener("change", () => {
+      if (bunkerConfigDirty) void saveBunkerConfig();
+    });
+    $("#bunkerInlineDimensions").addEventListener("input", event => {
+      const field = event.target.closest(
+        "[data-bunker-key], [data-bunker-radius]");
+      if (!field || field.value === "") return;
+      const value = Number(field.value);
+      const allowsZero = field.dataset.bunkerKey === "loadOffsetMm";
+      if (!Number.isFinite(value) || value < 0 ||
+          (!allowsZero && value === 0)) return;
+      const preview = { ...bunkerConfig };
+      if (field.dataset.bunkerRadius) {
+        preview.lowerBottomDiameterM = value * 2;
+      } else {
+        preview[field.dataset.bunkerKey] = value;
+      }
+      try {
+        validateBunkerConfig(preview);
+        bunkerConfig = preview;
+        bunkerConfigDirty = true;
+        const expandedKey = field.dataset.bunkerRadius
+          ? "lowerBottomDiameterM"
+          : field.dataset.bunkerKey;
+        const expandedField = document.querySelector(
+          `#bunkerConfig [name="${expandedKey}"]`);
+        if (expandedField) {
+          expandedField.value = bunkerConfig[expandedKey];
+        }
+        syncInlineBunkerDimensions();
+        syncFillLevelSlider();
+        updateBunkerFromCurrentStatus();
+      } catch (_) {
+        // Keep the last valid calculation until the value is valid.
+      }
+    });
+    $("#bunkerInlineDimensions").addEventListener("change", () => {
+      if (bunkerConfigDirty) void saveBunkerConfig();
+    });
+    $("#fillLevelSlider").addEventListener("input", event => {
+      bunkerConfig.targetFillPercent = Number(event.target.value);
+      bunkerConfigDirty = true;
+      updateBunkerFromCurrentStatus();
+    });
+    $("#fillLevelSlider").addEventListener("change", () => {
+      void saveBunkerConfig();
+    });
+    const statusPanels = [
+      {
+        btnId: "measurementsToggleBtn",
+        panelId: "measurementsPanel",
+        openClass: "measurements-panel-open",
+      },
+      {
+        btnId: "settingsToggleBtn",
+        panelId: "measurementSettingsPanel",
+        openClass: "settings-panel-open",
+      },
+      {
+        btnId: "calToggleBtn",
+        panelId: "calibrationPanel",
+        openClass: "cal-panel-open",
+      },
+      {
+        btnId: "journalToggleBtn",
+        panelId: "journalPanel",
+        openClass: "journal-panel-open",
+      },
+    ];
+    function setStatusPanelOpen(entry, open) {
+      const panel = $(`#${entry.panelId}`);
+      const btn = $(`#${entry.btnId}`);
+      panel.classList.toggle(entry.openClass, open);
+      panel.setAttribute("aria-hidden", open ? "false" : "true");
+      btn.classList.toggle("active", open);
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    function closeStatusPanels(exceptBtnId = null) {
+      statusPanels.forEach(entry => {
+        if (entry.btnId === exceptBtnId) return;
+        setStatusPanelOpen(entry, false);
+      });
+    }
+    function closeBunkerSettingsPanel() {
+      const form = $("#bunkerConfig");
+      const btn = $("#bunkerSettingsToggleBtn");
+      form.classList.remove("bunker-settings-open");
+      btn.classList.remove("active");
+      btn.setAttribute("aria-expanded", "false");
+      btn.textContent = "Развернуть переменные";
+    }
+    function closeAllPanels() {
+      closeStatusPanels();
+      closeBunkerSettingsPanel();
+    }
+    function toggleStatusPanel(entry) {
+      const panel = $(`#${entry.panelId}`);
+      const willOpen = !panel.classList.contains(entry.openClass);
+      closeStatusPanels(willOpen ? entry.btnId : null);
+      setStatusPanelOpen(entry, willOpen);
+    }
+    statusPanels.forEach(entry => {
+      $(`#${entry.btnId}`).addEventListener("click", () => {
+        toggleStatusPanel(entry);
+      });
+    });
+    $("#homeCloseBtn").addEventListener("click", closeAllPanels);
+    $("#bunkerSettingsToggleBtn").addEventListener("click", () => {
+      const form = $("#bunkerConfig");
+      const isOpen = form.classList.toggle("bunker-settings-open");
+      const btn = $("#bunkerSettingsToggleBtn");
+      btn.classList.toggle("active", isOpen);
+      btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      btn.textContent = isOpen ? "Свернуть переменные" : "Развернуть переменные";
+    });
+    function toggleBunkerSurfaceCone(mode) {
+      if (mode === "up") {
+        bunkerSurfaceConeUpAdjust = !bunkerSurfaceConeUpAdjust;
+      } else {
+        bunkerSurfaceConeDownAdjust = !bunkerSurfaceConeDownAdjust;
+      }
+      updateBunkerFromCurrentStatus();
+    }
+    $("#bunkerProductConeUp").addEventListener("click", () => {
+      toggleBunkerSurfaceCone("up");
+    });
+    $("#bunkerProductConeDown").addEventListener("click", () => {
+      toggleBunkerSurfaceCone("down");
+    });
+    $("#bunkerProductConeUp").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleBunkerSurfaceCone("up");
+      }
+    });
+    $("#bunkerProductConeDown").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleBunkerSurfaceCone("down");
+      }
+    });
+
+    if (localStorage.getItem(DATA_RESET_STORAGE_KEY) !== DATA_RESET_VERSION) {
+      localStorage.removeItem(MEASUREMENTS_STORAGE_KEY);
+      localStorage.setItem(DATA_RESET_STORAGE_KEY, DATA_RESET_VERSION);
+    }
+    updateLinearPointHint();
+    setBunkerTarget(0);
+    requestAnimationFrame(animateBunker);
+    try {
+      completedMeasurements =
+        JSON.parse(localStorage.getItem(MEASUREMENTS_STORAGE_KEY) || "[]");
+      if (!Array.isArray(completedMeasurements)) completedMeasurements = [];
+    } catch (_) {
+      completedMeasurements = [];
+    }
+    renderCompletedMeasurements();
+    renderContactTrace();
+    updateAutoUi();
+    loadManualSpeedFromStorage();
+    updateSoundButton();
+    loadApplicationVersion();
+    poll(); loadConfig(); loadCalibrationCapture(); loadBunkerConfig(true); loadEvents();
+    setInterval(poll, 40);
+    setInterval(loadConfig, 5000);
+    setInterval(loadCalibrationCapture, 2000);
+    setInterval(loadBunkerConfig, 5000);
+    setInterval(loadEvents, 5000);
+  </script>
+</body>
+</html>

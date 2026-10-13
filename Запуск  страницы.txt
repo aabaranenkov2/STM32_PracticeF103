@@ -1,0 +1,43 @@
+Быстрый запуск (сервер + браузер на блок «Тест энкодеров»):
+
+  chmod +x start_web_tests.sh
+  ./start_web_tests.sh
+
+Скрипт сам:
+  — находит и останавливает лишние web/server.py (иначе USB мигает);
+  — не запускает второй экземпляр, если сервер уже на 8765…8768;
+  — проверяет connected в /api/status перед открытием браузера.
+
+Без контроллера (только интерфейс):
+
+  SIMULATE=1 ./start_web_tests.sh
+
+Другой USB-порт:
+
+  SERIAL=/dev/ttyUSB1 ./start_web_tests.sh
+
+Не убивать дубликаты автоматически (только сообщить об ошибке):
+
+  STOP_DUPLICATES=0 ./start_web_tests.sh
+
+Остановить все серверы вручную:
+
+  pkill -f 'web/server.py'
+  rm -f .web-server.pid
+
+---
+
+Ручной запуск:
+
+  python3 web/server.py --serial /dev/ttyUSB0
+
+Страница: http://127.0.0.1:8765/
+Тесты:     http://127.0.0.1:8765/#devTest
+
+Терминал с сервером оставляйте открытым (если запускали вручную).
+
+Если кнопки мигают (активны / неактивны):
+  — запущено ДВА server.py на одном USB (проверка: pgrep -af 'web/server.py')
+  — оставьте только один: kill <PID лишнего>
+  — перезапустите: python3 web/server.py --serial /dev/ttyUSB0
+  Теперь второй экземпляр server.py не запустится (блокировка gateway.lock).

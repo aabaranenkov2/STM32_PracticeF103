@@ -25,8 +25,21 @@ Thumbs.db
 
 # Wine
 .wine/
+.windows-build/
+
+# Windows installer output
+build/
+dist/
 
 # Временные файлы
 *.tmp
 *.bak
 *.swp
+.web-server.pid
+__pycache__/
+*.py[cod]
+_downloads/
+compile_commands.json
+encoder-test-*.csv
+отчеты/
+*_backup.c
