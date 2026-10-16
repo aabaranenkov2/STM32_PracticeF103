@@ -10,6 +10,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (str(web_root / "index.html"), "."),
+        (str(web_root / "factory_defaults.json"), "."),
         (str(project_root / "VERSION"), "."),
     ],
     hiddenimports=["serial", "serial.tools.list_ports_windows"],

@@ -36,7 +36,8 @@ RESULT_BAD_STATE = 4
 SIMULATION_SPEED_MM_S = 300.0
 MEASUREMENT_TRAVEL_SECONDS = 3.0
 PARK_MIN_SECONDS = 0.4
-REVERSAL_SECONDS = 0.2
+MEASURE_REVERSAL_SECONDS = 0.02
+CONTACT_REVERSAL_SECONDS = 0.15
 TAKEUP_SECONDS = 0.15
 
 
@@ -232,7 +233,7 @@ class VirtualController:
         sensor_height = (
             lower +
             cylinder +
-            float(self.config.get("brake_comp_mm", 0))
+            float(self.bunker_config.get("load_offset_mm", 0))
         )
         load_height = float(self.config.get("load_height_mm", 0))
         return max(0.0, sensor_height - fill_height - load_height)
@@ -308,7 +309,7 @@ class VirtualController:
         sensor_height = (
             lower +
             cylinder +
-            float(self.config.get("brake_comp_mm", 0))
+            float(self.bunker_config.get("load_offset_mm", 0))
         )
         selected_path = (
             self._fg_mm(fg_counts)
@@ -435,8 +436,13 @@ class VirtualController:
             self._refresh_live_values(self._parking_speed_mm_s)
             if (self._path_mm <= 0.0 and
                     now - self._phase_started >= PARK_MIN_SECONDS):
-                self._phase = "park_release"
-                self._set_state(9)
+                if self._measurement_after_park:
+                    self._measurement_after_park = False
+                    self._phase = "measure_wait"
+                    self._set_state(13)
+                else:
+                    self._phase = "park_release"
+                    self._set_state(9)
         elif self._phase == "park_release":
             if now - self._phase_started >= park_release_seconds:
                 self._phase = "park_test_down"
@@ -478,7 +484,7 @@ class VirtualController:
                     self._phase = "ready"
                     self._set_state(1)
         elif self._phase == "measure_wait":
-            if now - self._phase_started >= REVERSAL_SECONDS:
+            if now - self._phase_started >= MEASURE_REVERSAL_SECONDS:
                 self._begin_measurement_descent()
         elif self._phase == "descending":
             self._path_mm = min(
@@ -504,7 +510,7 @@ class VirtualController:
                 self._phase = "contact"
                 self._set_state(6)
         elif self._phase == "contact":
-            if now - self._phase_started >= REVERSAL_SECONDS:
+            if now - self._phase_started >= CONTACT_REVERSAL_SECONDS:
                 self.status["ground_detect"] = False
                 self._phase = "takeup"
                 self._set_state(

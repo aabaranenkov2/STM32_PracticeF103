@@ -189,6 +189,34 @@ def simulation_reports_directory() -> Path:
     return path
 
 
+def factory_profile_path() -> Path:
+    destination = data_directory() / "factory_defaults.json"
+    if not destination.exists():
+        template = resource_directory() / "factory_defaults.json"
+        profile = json.loads(template.read_text(encoding="utf-8"))
+        destination.write_text(
+            json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    return destination
+
+
+def load_factory_profile() -> dict:
+    path = factory_profile_path()
+    profile = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(profile, dict):
+        raise ValueError("заводской профиль должен быть объектом JSON")
+    controller = profile.get("controller_config")
+    bunker = profile.get("bunker_config")
+    if not isinstance(controller, dict) or not isinstance(bunker, dict):
+        raise ValueError(
+            "в заводском профиле нужны controller_config и bunker_config"
+        )
+    encode_config(controller)
+    encode_bunker_config(bunker)
+    return profile
+
+
 def _startup_log(message: str) -> None:
     try:
         path = data_directory() / "startup.log"
@@ -363,7 +391,7 @@ class SerialGateway:
             "model_stroke_mm": 570,
             "upper_height_mm": 1500,
             "upper_top_diameter_mm": 300,
-            "bunker_diameter_mm": 5300,
+            "bunker_diameter_mm": 5600,
             "cylinder_height_mm": 10000,
             "lower_height_mm": 2000,
             "lower_bottom_diameter_mm": 1000,
@@ -759,6 +787,12 @@ class ApiHandler(SimpleHTTPRequestHandler):
             self._json(self.gateway.config())
         elif self.path == "/api/bunker-config":
             self._json(self.gateway.bunker_config())
+        elif self.path == "/api/factory-profile":
+            profile = load_factory_profile()
+            self._json({
+                "profile": profile,
+                "path": str(factory_profile_path()),
+            })
         elif self.path == "/api/calibration-capture":
             try:
                 payload = self.gateway.execute(CMD_GET_CALIBRATION_CAPTURE)
@@ -801,6 +835,52 @@ class ApiHandler(SimpleHTTPRequestHandler):
                 else:
                     raise ValueError("неизвестная команда")
                 self._json({"ok": True, "result": response.hex()})
+            elif self.path == "/api/factory-profile/apply":
+                status = self.gateway.status()
+                if not status.get("connected"):
+                    raise RuntimeError("контроллер не подключён")
+                if int(status.get("state", -1)) != 1:
+                    raise RuntimeError(
+                        "заводской профиль можно записать только в состоянии «Готов»"
+                    )
+                profile = load_factory_profile()
+                config_payload = encode_config(profile["controller_config"])
+                bunker_payload = encode_bunker_config(
+                    profile["bunker_config"]
+                )
+                config_response = self.gateway.execute(
+                    CMD_SET_CONFIG, config_payload
+                )
+                if config_response and config_response[0] != 0:
+                    raise ValueError(
+                        "контроллер отклонил заводские настройки: "
+                        f"код {config_response[0]}"
+                    )
+                bunker_response = self.gateway.execute(
+                    CMD_SET_BUNKER_CONFIG, bunker_payload
+                )
+                if bunker_response and bunker_response[0] != 0:
+                    raise ValueError(
+                        "контроллер отклонил заводскую геометрию: "
+                        f"код {bunker_response[0]}"
+                    )
+                with self.gateway._lock:
+                    self.gateway._config = decode_config(
+                        b"\x00" + config_payload
+                    )
+                    self.gateway._bunker_config = decode_bunker_config(
+                        b"\x00" + bunker_payload
+                    )
+                self.event_log.add(
+                    "config",
+                    "Заводской профиль записан в контроллер",
+                    {"path": str(factory_profile_path())},
+                )
+                self._json({
+                    "ok": True,
+                    "profile_name": profile.get("profile_name", ""),
+                    "path": str(factory_profile_path()),
+                })
             elif self.path == "/api/config":
                 payload = encode_config(body)
                 response = self.gateway.execute(CMD_SET_CONFIG, payload)

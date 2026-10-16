@@ -1,9 +1,17 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import call, patch
 from urllib.error import URLError
 
-from server import ApiHandler, _open_browser_when_ready
+from server import (
+    ApiHandler,
+    _open_browser_when_ready,
+    factory_profile_path,
+    load_factory_profile,
+)
 
 
 class FakeResponse:
@@ -78,6 +86,56 @@ class BrowserStartupTests(unittest.TestCase):
         log_mock.assert_called_once_with(
             'HTTP GET /: "GET / HTTP/1.1" 200'
         )
+
+
+class FactoryProfileTests(unittest.TestCase):
+    def test_profile_contains_tuned_controller_and_bunker_values(self):
+        profile = load_factory_profile()
+
+        self.assertEqual(profile["controller_config"]["run_pwm"], 670)
+        self.assertEqual(
+            profile["controller_config"]["length_cal_x10000"], 10747
+        )
+        self.assertEqual(
+            profile["controller_config"]["motor_cal_x10000"], 12221
+        )
+        self.assertEqual(
+            profile["controller_config"]["motor_encoder_enabled"], 1
+        )
+        self.assertEqual(
+            profile["bunker_config"]["bunker_diameter_mm"], 5600
+        )
+        self.assertEqual(
+            profile["bunker_config"]["cylinder_height_mm"], 10000
+        )
+
+    def test_profile_is_copied_once_to_writable_data_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            resources = root / "resources"
+            data = root / "data"
+            resources.mkdir()
+            data.mkdir()
+            source = resources / "factory_defaults.json"
+            source.write_text(
+                json.dumps({"profile_name": "Первоначальный"}),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("server.resource_directory", return_value=resources),
+                patch("server.data_directory", return_value=data),
+            ):
+                destination = factory_profile_path()
+                source.write_text(
+                    json.dumps({"profile_name": "Новый"}),
+                    encoding="utf-8",
+                )
+                second_destination = factory_profile_path()
+
+            self.assertEqual(destination, second_destination)
+            saved = json.loads(destination.read_text(encoding="utf-8"))
+            self.assertEqual(saved["profile_name"], "Первоначальный")
 
 
 if __name__ == "__main__":

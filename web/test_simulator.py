@@ -115,6 +115,21 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(simulator.status["state"], 4)
         self.assertEqual(simulator.status["state_name"], "Парковка")
 
+    def test_measurement_skips_release_and_parking_test(self):
+        simulator = VirtualController(test_config(), test_bunker_config())
+        simulator.handle(CMD_MEASURE_AUTO_ONCE)
+        states = [simulator.status["state"]]
+        now = time.monotonic()
+
+        for step in range(1, 100):
+            simulator.tick(now + step * 0.01)
+            if states[-1] != simulator.status["state"]:
+                states.append(simulator.status["state"])
+            if simulator.status["state"] == 5:
+                break
+
+        self.assertEqual(states, [4, 13, 5])
+
     def test_selected_motor_factor_changes_result_only_in_simulator(self):
         config = test_config()
         config["motor_encoder_enabled"] = 1
@@ -125,7 +140,22 @@ class SimulatorTests(unittest.TestCase):
 
         self.run_measurement(simulator)
 
-        self.assertAlmostEqual(simulator.status["result_mm"], 1670.0, delta=2.0)
+        self.assertAlmostEqual(simulator.status["result_mm"], 1620.0, delta=2.0)
+
+    def test_sensor_height_above_base_extends_ground_path(self):
+        bunker = test_bunker_config()
+        bunker["load_offset_mm"] = 0
+        at_base = VirtualController(test_config(), bunker)
+        raised_bunker = dict(bunker)
+        raised_bunker["load_offset_mm"] = 500
+        raised = VirtualController(test_config(), raised_bunker)
+
+        self.assertAlmostEqual(
+            raised._configured_ground_path_mm() -
+            at_base._configured_ground_path_mm(),
+            500.0,
+            delta=0.1,
+        )
 
     def test_config_write_stays_in_virtual_controller(self):
         original = test_config()

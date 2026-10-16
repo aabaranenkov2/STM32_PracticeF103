@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Лотовый датчик</title>
+  <title>LotSensor V1</title>
   <style>
     :root {
       color-scheme: dark;
@@ -503,6 +503,21 @@
       font-weight: 700;
       box-sizing: border-box;
     }
+    .periodic-time-inputs {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 4px;
+      align-items: center;
+    }
+    .periodic-time-inputs span {
+      color: var(--muted);
+      font-size: .7rem;
+    }
+    .bunker-work-modes .periodic-time-inputs input {
+      min-width: 0;
+      padding: 6px 3px;
+      text-align: center;
+    }
     #periodicModeBtn {
       min-height: 40px;
       padding: 6px 10px;
@@ -553,6 +568,17 @@
       background: #24364b;
       color: #dce8f5;
       font-weight: 800;
+    }
+    .sound-control-row {
+      display: grid;
+      grid-template-columns: 1fr 58px;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .bunker-work-modes .sound-control-row input {
+      min-height: 36px;
+      padding: 5px 3px;
+      text-align: center;
     }
     #soundModeBtn.active {
       border-color: #63c983;
@@ -832,6 +858,25 @@
       color: var(--muted);
       font-size: .61rem;
       line-height: 1.15;
+    }
+    .factory-profile-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 260px) 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-top: 8px;
+      padding-top: 10px;
+      border-top: 1px solid #36516f;
+    }
+    #factoryRestoreBtn {
+      min-height: 38px;
+      background: #7a542e;
+      border-color: #bd8952;
+    }
+    #factoryProfilePath {
+      overflow-wrap: anywhere;
+      color: var(--muted);
+      font-size: .65rem;
     }
     form button { align-self: end; }
     .journal { width: 100%; border-collapse: collapse; font-size: .86rem; }
@@ -1143,7 +1188,7 @@
 <body>
   <header>
     <div class="app-title">
-      <h1>Лотовый датчик</h1>
+      <h1>LotSensor V1</h1>
       <span class="app-version" id="appVersion">Версия …</span>
     </div>
     <div class="connection"><span class="dot" id="connectionDot"></span><span id="connectionText">Нет связи</span></div>
@@ -1215,8 +1260,15 @@
         <label class="setting"><span>Замедление перед упором, %</span><input name="slowdown_remaining_percent" type="number" min="1" max="100"><small>На последних процентах пути вверх скорость измерения снижается. Значение 10 означает последние 10 % пути.</small></label>
         <label class="setting"><span>Делитель замедления ×0,1</span><input name="slowdown_divisor_tenths" type="number" min="10"><small>Степень снижения скорости: 10 — без снижения, 20 — скорость уменьшается в 2 раза.</small></label>
         <label class="setting"><span>Высота груза, мм</span><input name="load_height_mm" type="number" min="0" max="10000" step="1"><small>Прибавляется к измеренному ходу нити. При тарировке вычитается из эталона, чтобы смена груза не изменяла коэффициент энкодера.</small></label>
-        <label class="setting"><span>Датчик выше базы, мм</span><input name="sensor_height_offset_mm" type="number" min="0" max="10000" step="1"><small>База вычисляется автоматически: нижний конус + цилиндр = <strong id="sensorBaseHeight">—</strong>. Если датчик поднят над этой плоскостью, укажите высоту подъёма.</small></label>
       </form>
+      <div class="factory-profile-row">
+        <button type="button" id="factoryRestoreBtn">
+          Восстановить заводской профиль
+        </button>
+        <span id="factoryProfilePath">
+          Файл заводских параметров: загрузка…
+        </span>
+      </div>
     </section>
 
     <section class="card cal-card" id="calibrationPanel" aria-hidden="true">
@@ -1412,10 +1464,10 @@
       </div>
       <div class="bunker-dimension-panel" id="bunkerInlineDimensions">
         <label class="bunker-load-offset-row">
-          <span>Груз от левой стенки, мм</span>
+          <span>Датчик над базой, мм</span>
           <input type="number" data-bunker-key="loadOffsetMm"
                  min="0" max="100000" step="1"
-                 title="Груз от левой стенки, мм">
+                 title="Вертикальная высота датчика над базой, мм">
         </label>
         <label class="bunker-diameter-row">
           <span>Диаметр бункера, м</span>
@@ -1477,9 +1529,17 @@
         </div>
         <div class="bunker-work-modes bunker-mode-panel">
           <h3 class="bunker-mode-title">Рабочие режимы</h3>
-          <label>Интервал замеров, минут
-            <input id="periodicIntervalMinutes" type="number"
-                   min="1" max="10080" step="1" value="60">
+          <label>Интервал замеров
+            <span class="periodic-time-inputs">
+              <input id="periodicIntervalHours" type="number"
+                     min="0" max="168" step="1" value="1" aria-label="Часы">
+              <span>ч</span>
+              <input id="periodicIntervalMinutes" type="number"
+                     min="0" max="59" step="1" value="0" aria-label="Минуты">
+              <span>м</span>
+              <input id="periodicIntervalSeconds" type="number"
+                     min="0" max="59" step="1" value="0" aria-label="Секунды">
+            </span>
           </label>
           <label>Основной энкодер результата
             <select id="workMeasurementSource">
@@ -1491,9 +1551,14 @@
             Запустить периодический режим
           </button>
           <span id="periodicModeState">Режим выключен</span>
-          <button id="soundModeBtn" class="bunker-ctrl-btn active" type="button">
-            Звук: ВКЛ
-          </button>
+          <div class="sound-control-row">
+            <button id="soundModeBtn" class="bunker-ctrl-btn active" type="button">
+              Звук: ВКЛ
+            </button>
+            <input id="soundVolumePercent" type="number" min="0" max="100"
+                   step="1" value="70" title="Громкость звука, %"
+                   aria-label="Громкость звука, процентов">
+          </div>
           <span class="small" id="reportPathText">Отчёт: отчеты/ГГГГ-ММ-ДД.csv</span>
           <button id="simulationModeBtn" class="bunker-ctrl-btn" type="button">
             Симуляция
@@ -1505,11 +1570,11 @@
         <label class="bunker-setting"><input name="modelStrokeMm" type="number" value="570" min="1" max="100000" step="1"><span><strong>Полный ход макета, мм</strong><small>При этой длине нити груз должен достигнуть уровня, заданного ползунком.</small></span></label>
         <label class="bunker-setting"><input name="upperHeightM" type="number" value="1.5" min="0.01" max="100" step="0.01"><span><strong>Верхний конус: высота, м</strong><small>Высота верхней усечённой части бункера.</small></span></label>
         <label class="bunker-setting"><input name="upperTopDiameterM" type="number" value="0.3" min="0.01" max="100" step="0.01"><span><strong>Верхний конус: верх Ø, м</strong><small>Диаметр верхнего отверстия.</small></span></label>
-        <label class="bunker-setting"><input name="bunkerDiameterM" type="number" value="5.3" min="0.01" max="100" step="0.01"><span><strong>Диаметр бункера, м</strong><small>Общий диаметр цилиндра и широких оснований конусов.</small></span></label>
+        <label class="bunker-setting"><input name="bunkerDiameterM" type="number" value="5.6" min="0.01" max="100" step="0.01"><span><strong>Диаметр бункера, м</strong><small>Общий диаметр цилиндра и широких оснований конусов.</small></span></label>
         <label class="bunker-setting"><input name="cylinderHeightM" type="number" value="10" min="0.01" max="1000" step="0.01"><span><strong>Высота цилиндра, м</strong><small>Высота центральной цилиндрической части.</small></span></label>
         <label class="bunker-setting"><input name="lowerHeightM" type="number" value="2" min="0.01" max="100" step="0.01"><span><strong>Нижний конус: высота, м</strong><small>Высота нижней усечённой части.</small></span></label>
         <label class="bunker-setting"><input name="lowerBottomDiameterM" type="number" value="1" min="0.01" max="100" step="0.01"><span><strong>Нижний конус: низ Ø, м</strong><small>Диаметр нижнего выпускного отверстия.</small></span></label>
-        <label class="bunker-setting"><input name="loadOffsetMm" type="number" value="200" min="0" max="100000" step="1"><span><strong>Груз от левой стенки, мм</strong><small>Горизонтальное положение датчика, нити и груза.</small></span></label>
+        <label class="bunker-setting"><input name="loadOffsetMm" type="number" value="200" min="0" max="100000" step="1"><span><strong>Датчик над базой, мм</strong><small>Вертикальная высота над плоскостью «нижний конус + цилиндр». Положение на рисунке рассчитывается по наклонной верхнего конуса.</small></span></label>
         <label class="bunker-setting"><input name="density" type="number" value=".75" min="0" step=".001"><span><strong>Плотность, т/м³</strong><small>Используется для вычисления массы продукта.</small></span></label>
         <label class="bunker-setting"><input name="factor" type="number" value="1" min="0" step=".001"><span><strong>Коэффициент продукта</strong><small>Дополнительный множитель рассчитанной массы.</small></span></label>
       </form>
@@ -1536,8 +1601,13 @@
     let previousEncoder = null;
     const MANUAL_SPEED_STORAGE_KEY = "lot_manual_speed_percent";
     const SOUND_STORAGE_KEY = "lot_motor_sound_enabled";
+    const SOUND_VOLUME_STORAGE_KEY = "lot_motor_sound_volume_percent";
     let manualSpeedSendTimer = null;
     let soundEnabled = localStorage.getItem(SOUND_STORAGE_KEY) !== "0";
+    let soundVolumePercent = Math.max(0, Math.min(
+      100, Number(localStorage.getItem(SOUND_VOLUME_STORAGE_KEY) ?? 70)
+    ));
+    if (!Number.isFinite(soundVolumePercent)) soundVolumePercent = 70;
     let motorSoundDirection = null;
     let audioContext = null;
     let motorOscillator = null;
@@ -1739,6 +1809,48 @@
       return Math.abs(Number(encoder)) * MEASURE_MM_PER_PULSE;
     }
 
+    const PERIODIC_MAX_SECONDS = 7 * 24 * 60 * 60;
+
+    function periodicIntervalSeconds() {
+      const hours = Number($("#periodicIntervalHours").value);
+      const minutes = Number($("#periodicIntervalMinutes").value);
+      const seconds = Number($("#periodicIntervalSeconds").value);
+      if (![hours, minutes, seconds].every(Number.isInteger) ||
+          hours < 0 || hours > 168 ||
+          minutes < 0 || minutes > 59 ||
+          seconds < 0 || seconds > 59) {
+        return NaN;
+      }
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+
+    function periodicIntervalText() {
+      const totalSeconds = periodicIntervalSeconds();
+      if (!Number.isFinite(totalSeconds)) return "неверный интервал";
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor(totalSeconds % 3600 / 60);
+      const seconds = totalSeconds % 60;
+      return `${hours} ч ${minutes} мин ${seconds} с`;
+    }
+
+    function applyPeriodicInterval(milliseconds) {
+      const fields = [
+        $("#periodicIntervalHours"),
+        $("#periodicIntervalMinutes"),
+        $("#periodicIntervalSeconds")
+      ];
+      if (fields.includes(document.activeElement)) return;
+      const totalSeconds = Math.max(
+        1, Math.min(PERIODIC_MAX_SECONDS,
+          Math.round(Number(milliseconds) / 1000)));
+      $("#periodicIntervalHours").value =
+        String(Math.floor(totalSeconds / 3600));
+      $("#periodicIntervalMinutes").value =
+        String(Math.floor(totalSeconds % 3600 / 60));
+      $("#periodicIntervalSeconds").value =
+        String(totalSeconds % 60);
+    }
+
     function applyConfigToForm(config) {
       lastDeviceConfig = { ...config };
       if (!calDirty) {
@@ -1767,11 +1879,6 @@
         const field = document.querySelector(`#deviceConfig [name="${key}"]`);
         if (field && key in config) field.value = config[key];
       });
-      const sensorHeightOffset = document.querySelector(
-        '#deviceConfig [name="sensor_height_offset_mm"]');
-      if (sensorHeightOffset) {
-        sensorHeightOffset.value = Number(config.brake_comp_mm) || 0;
-      }
       const calSource = $("#calMeasurementSource");
       if (calSource) {
         calSource.value =
@@ -1782,13 +1889,7 @@
         workSource.value =
           Number(config.motor_encoder_enabled) !== 0 ? "1" : "0";
       }
-      const periodicInterval = $("#periodicIntervalMinutes");
-      if (periodicInterval && document.activeElement !== periodicInterval) {
-        periodicInterval.value = String(Math.max(
-          1,
-          Math.round(Number(config.auto_interval_ms) / 60000)
-        ));
-      }
+      applyPeriodicInterval(config.auto_interval_ms);
     }
 
     function configFromForm(form) {
@@ -1807,7 +1908,7 @@
         contact_ignore_ms: Number(values.contact_ignore_ms),
         motion_timeout_ms: Number(values.motion_timeout_s) * 1000,
         max_descent_mm: Number(values.max_descent_mm),
-        brake_comp_mm: Number(values.sensor_height_offset_mm),
+        brake_comp_mm: 0,
         descent_correction_mm: Number(lastDeviceConfig.descent_correction_mm) || 0,
         ascent_correction_mm: Number(lastDeviceConfig.ascent_correction_mm) || 0,
         load_height_mm: Number(values.load_height_mm),
@@ -1900,7 +2001,7 @@
       modelStrokeMm: 570,
       upperHeightM: 1.5,
       upperTopDiameterM: 0.3,
-      bunkerDiameterM: 5.3,
+      bunkerDiameterM: 5.6,
       cylinderHeightM: 10,
       lowerHeightM: 2,
       lowerBottomDiameterM: 1,
@@ -1977,6 +2078,10 @@
       if (!button) return;
       button.textContent = soundEnabled ? "Звук: ВКЛ" : "Звук: ВЫКЛ";
       button.classList.toggle("active", soundEnabled);
+      const volume = $("#soundVolumePercent");
+      if (volume && document.activeElement !== volume) {
+        volume.value = String(Math.round(soundVolumePercent));
+      }
     }
 
     function ensureAudioContext() {
@@ -2020,13 +2125,16 @@
       const gain = audioContext.createGain();
       const lfo = audioContext.createOscillator();
       const lfoGain = audioContext.createGain();
+      const targetGain =
+        Math.max(0.0001, soundVolumePercent / 100 * (up ? 0.15 : 0.18));
 
       oscillator.type = up ? "triangle" : "sawtooth";
       oscillator.frequency.setValueAtTime(up ? 470 : 190, now);
       lfo.frequency.setValueAtTime(up ? 8 : 5, now);
-      lfoGain.gain.setValueAtTime(up ? 0.006 : 0.009, now);
+      lfoGain.gain.setValueAtTime(
+        targetGain * (up ? 0.30 : 0.375), now);
       gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(up ? 0.020 : 0.024, now + 0.06);
+      gain.gain.exponentialRampToValueAtTime(targetGain, now + 0.06);
 
       oscillator.connect(gain);
       lfo.connect(lfoGain);
@@ -2140,7 +2248,6 @@
       const bottomY = 420;
       const centerX = 160;
       const totalHeight = Math.max(.01, bunkerTotalHeightM());
-      const diameter = Math.max(.01, Number(bunkerConfig.bunkerDiameterM));
       const mainHalfWidth = 130;
       const upperHalfWidth = 7;
       const lowerHalfWidth = 25;
@@ -2156,15 +2263,18 @@
         `L${centerX - lowerHalfWidth} ${bottomY} ` +
         `L${centerX - mainHalfWidth} ${cylinderBottomY} ` +
         `L${centerX - mainHalfWidth} ${upperBottomY} Z`;
-      const offsetM = Math.max(0, Math.min(
-        diameter, Number(bunkerConfig.loadOffsetMm) / 1000));
-      const sensorX = centerX - mainHalfWidth +
-        offsetM / diameter * mainHalfWidth * 2;
       const leftTopX = centerX - upperHalfWidth;
       const leftBottomX = centerX - mainHalfWidth;
+      const upperHeightM = Math.max(
+        .001, Number(bunkerConfig.upperHeightM));
+      const sensorHeightM = Math.max(0, Math.min(
+        upperHeightM, Number(bunkerConfig.loadOffsetMm) / 1000));
       const roofFraction = Math.max(0, Math.min(
-        1, (leftTopX - sensorX) / Math.max(.01, leftTopX - leftBottomX)));
-      const sensorY = topY + roofFraction * (upperBottomY - topY);
+        1, sensorHeightM / upperHeightM));
+      const sensorX =
+        leftBottomX + roofFraction * (leftTopX - leftBottomX);
+      const sensorY =
+        upperBottomY + roofFraction * (topY - upperBottomY);
       return {
         topY, bottomY, centerX, mainHalfWidth, upperHalfWidth, lowerHalfWidth,
         path, sensorX, sensorY, usableHeight, totalHeight, upperBottomY,
@@ -2297,13 +2407,9 @@
       const displayedWeightMm = status.simulated
         ? Math.max(0, Number(status.simulation_path_mm) || 0)
         : scaledEncoderMm;
-      const measuredLevelM = Number(status.result_mm) / 1000;
-      const fillHeightM =
-        status.simulated
-          ? targetHeightM
-          : Number(status.measurement_count) > 0 && Number.isFinite(measuredLevelM)
-          ? Math.max(0, Math.min(drawing.totalHeight, measuredLevelM))
-          : targetHeightM;
+      const measuredHeightM = Math.max(
+        0, Math.min(drawing.totalHeight, Number(status.result_mm) / 1000 || 0));
+      const fillHeightM = status.simulated ? targetHeightM : measuredHeightM;
       const productY = drawing.bottomY -
         fillHeightM / drawing.totalHeight * drawing.usableHeight;
       const strokeFraction = status.simulated
@@ -2379,8 +2485,13 @@
         "transform", `translate(${weightTranslateX.toFixed(2)} ${weightTranslateY.toFixed(2)})`);
       $("#bunkerCurrentLength").setAttribute(
         "y", (drawing.topY + 10).toFixed(2));
+      const motionSourceName =
+        !status.simulated &&
+        Number(lastDeviceConfig.motor_encoder_enabled) !== 0
+          ? "Mot_FG"
+          : "Enc";
       $("#bunkerCurrentLength").textContent =
-        `Enc ${currentEncoderMm.toFixed(1)} мм`;
+        `${motionSourceName} ${currentEncoderMm.toFixed(1)} мм`;
       $("#bunkerLastResult").setAttribute(
         "y", (drawing.upperBottomY - 3).toFixed(2));
       $("#bunkerLastResult").textContent =
@@ -2453,9 +2564,11 @@
         toast("Периодический режим можно запустить только после сигнала «Готов»");
         return;
       }
-      const minutes = Number($("#periodicIntervalMinutes").value);
-      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) {
-        toast("Интервал должен быть целым числом от 1 до 10080 минут");
+      const intervalSeconds = periodicIntervalSeconds();
+      if (!Number.isFinite(intervalSeconds) ||
+          intervalSeconds < 1 ||
+          intervalSeconds > PERIODIC_MAX_SECONDS) {
+        toast("Интервал должен быть от 1 секунды до 7 суток");
         return;
       }
 
@@ -2463,7 +2576,7 @@
         Number($("#workMeasurementSource").value) !== 0 ? 1 : 0;
       const payload = {
         ...lastDeviceConfig,
-        auto_interval_ms: minutes * 60000,
+        auto_interval_ms: intervalSeconds * 1000,
         motor_encoder_enabled: source
       };
       await api("/api/config", {
@@ -2782,13 +2895,15 @@
         : "Запустить периодический режим";
       $("#periodicModeBtn").classList.toggle("active", periodicActive);
       $("#periodicModeState").textContent = periodicActive
-        ? `Включен: первый замер сразу, затем каждые ${$("#periodicIntervalMinutes").value} мин`
+        ? `Включен: первый замер сразу, затем каждые ${periodicIntervalText()}`
         : "Режим выключен";
       $("#simulationModeBtn").textContent = data.simulated
         ? "Выйти из симуляции"
         : "Симуляция";
       $("#simulationModeBtn").classList.toggle(
         "active", Boolean(data.simulated));
+      $("#bunkerSliderHost").style.display =
+        data.simulated ? "" : "none";
       $("#reportPathText").textContent = data.simulated
         ? "Учебный отчёт: отчеты/симулятор/ГГГГ-ММ-ДД.csv"
         : "Отчёт: отчеты/ГГГГ-ММ-ДД.csv";
@@ -2834,10 +2949,21 @@
       $("#periodicModeBtn").disabled =
         !data.connected || autoBatchActive ||
         (!periodicActive && Number(data.state) !== 1);
-      $("#periodicIntervalMinutes").disabled = periodicActive;
+      [
+        $("#periodicIntervalHours"),
+        $("#periodicIntervalMinutes"),
+        $("#periodicIntervalSeconds")
+      ].forEach(field => field.disabled = periodicActive);
+      $("#factoryRestoreBtn").disabled =
+        !data.connected || periodicActive || autoBatchActive ||
+        calAutoRunning || singleMeasureRunning || Number(data.state) !== 1;
       const manualSpeedField = $("#manualSpeedPercent");
       if (manualSpeedField) manualSpeedField.disabled = !data.connected;
-      setBunkerTarget(encMm);
+      const bunkerMotionMm =
+        !data.simulated && Number(lastDeviceConfig.motor_encoder_enabled) !== 0
+          ? motMm
+          : encMm;
+      setBunkerTarget(bunkerMotionMm);
       syncMotorSound(data);
     }
 
@@ -2858,6 +2984,48 @@
           updateCalDisplay(config);
         }
       } catch (error) { toast(error.message); }
+    }
+
+    async function loadFactoryProfileInfo() {
+      try {
+        const data = await api("/api/factory-profile");
+        const name = data.profile?.profile_name || "Заводской профиль";
+        $("#factoryProfilePath").textContent =
+          `${name}: ${data.path}`;
+      } catch (error) {
+        $("#factoryProfilePath").textContent =
+          `Файл заводских параметров недоступен: ${error.message}`;
+      }
+    }
+
+    async function restoreFactoryProfile() {
+      const confirmed = window.confirm(
+        "Записать заводской профиль в контроллер? " +
+        "Текущие настройки и тарировка будут заменены."
+      );
+      if (!confirmed) return;
+      const button = $("#factoryRestoreBtn");
+      button.disabled = true;
+      try {
+        const result = await api("/api/factory-profile/apply", {
+          method: "POST",
+          body: "{}"
+        });
+        configDirty = false;
+        calDirty = false;
+        bunkerConfigDirty = false;
+        await loadConfig(true);
+        await loadBunkerConfig(true);
+        await loadFactoryProfileInfo();
+        toast(
+          `${result.profile_name || "Заводской профиль"} записан в контроллер`
+        );
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        button.disabled =
+          !status.connected || Number(status.state) !== 1;
+      }
     }
 
     async function loadCalibrationCapture() {
@@ -2886,7 +3054,7 @@
       try {
         const data = await api("/api/version");
         $("#appVersion").textContent = `Версия ${data.version}`;
-        document.title = `Лотовый датчик ${data.version}`;
+        document.title = `LotSensor V1 — ${data.version}`;
       } catch (_) {
         $("#appVersion").textContent = "Версия dev";
       }
@@ -2909,6 +3077,18 @@
         return;
       }
       void ensureAudioContext().then(() => syncMotorSound(status));
+    });
+    $("#soundVolumePercent").addEventListener("input", event => {
+      const value = Number(event.target.value);
+      if (!Number.isFinite(value)) return;
+      soundVolumePercent = Math.max(0, Math.min(100, value));
+      localStorage.setItem(
+        SOUND_VOLUME_STORAGE_KEY, String(soundVolumePercent));
+      if (motorSoundDirection) {
+        const direction = motorSoundDirection;
+        stopMotorSound();
+        startMotorSound(direction);
+      }
     });
     document.addEventListener("pointerdown", () => {
       if (soundEnabled) {
@@ -3421,6 +3601,9 @@
       configDirty = true;
       void saveSettings();
     });
+    $("#factoryRestoreBtn").addEventListener("click", () => {
+      void restoreFactoryProfile();
+    });
 
     function updateBunkerFromCurrentStatus() {
       showBunker(bunkerVisualMm());
@@ -3440,11 +3623,6 @@
         "aria-valuetext",
         `${Number(bunkerConfig.targetFillPercent).toFixed(1)} %`
       );
-      const baseHeightM =
-        Number(bunkerConfig.lowerHeightM) +
-        Number(bunkerConfig.cylinderHeightM);
-      $("#sensorBaseHeight").textContent =
-        `${baseHeightM.toFixed(3)} м (${(baseHeightM * 1000).toFixed(0)} мм)`;
     }
 
     function syncInlineBunkerDimensions() {
@@ -3490,8 +3668,10 @@
           "Диаметры верхнего и нижнего отверстий не могут быть больше диаметра бункера"
         );
       }
-      if (next.loadOffsetMm > next.bunkerDiameterM * 1000) {
-        throw new Error("Расстояние груза от стенки больше диаметра бункера");
+      if (next.loadOffsetMm > next.upperHeightM * 1000) {
+        throw new Error(
+          "Высота датчика над базой больше высоты верхнего конуса"
+        );
       }
     }
 
@@ -3716,6 +3896,7 @@
     loadManualSpeedFromStorage();
     updateSoundButton();
     loadApplicationVersion();
+    loadFactoryProfileInfo();
     poll(); loadConfig(); loadCalibrationCapture(); loadBunkerConfig(true); loadEvents();
     setInterval(poll, 40);
     setInterval(loadConfig, 5000);

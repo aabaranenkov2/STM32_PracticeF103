@@ -36,8 +36,6 @@
 #define BUTTON_DEBOUNCE_TICKS      3U
 #define APP_TICK_MS                10U
 #define SPEED_SAMPLE_MS            APP_TICK_MS
-#define CONTACT_NOW_WINDOW_MS      500U
-#define CONTACT_NOW_SAMPLES        (CONTACT_NOW_WINDOW_MS / SPEED_SAMPLE_MS)
 #define TX_TURNAROUND_MS           10U
 #define CONFIG_MAGIC               0x4C4F5431UL
 #define CONFIG_VERSION             15U
@@ -59,6 +57,7 @@
 #define TAKEUP_TIMEOUT_MS          15000UL
 #define TAKEUP_CONFIRM_TENTH_MM    10L
 #define ASCENT_RAMP_TENTH_MM       500L
+#define LOCAL_AUTO_INTERVAL_MS     3000UL
 
 #if defined(STM32F103x6)
 #define DEVICE_FLASH_SIZE          (32UL * 1024UL)
@@ -189,7 +188,7 @@ typedef struct
     uint32_t cylinder_height_mm;
     uint32_t lower_height_mm;
     uint32_t lower_bottom_diameter_mm;
-    uint32_t load_offset_mm;
+    uint32_t sensor_height_above_base_mm;
     uint32_t density_x1000;
     uint32_t product_factor_x1000;
 } bunker_config_t;
@@ -423,7 +422,7 @@ static lot_config_t g_config = {
     0L, 2000U, 0U, 110U, 0U, 0, 2U, 1000UL, 945U, 0
 };
 static bunker_config_t g_bunker_config = {
-    889U, 678U, 570UL, 1500UL, 300UL, 5300UL,
+    889U, 678U, 570UL, 1500UL, 300UL, 5600UL,
     10000UL, 2000UL, 1000UL, 200UL, 750UL, 1000UL
 };
 static lot_status_t g_status;
@@ -432,6 +431,7 @@ static uint32_t g_state_started_ms;
 static uint32_t g_last_encoder_ms;
 static uint32_t g_last_app_ms;
 static uint32_t g_next_auto_ms;
+static bool g_local_auto_enabled;
 static int32_t g_state_encoder_start;
 static int32_t g_state_fg_start;
 static int32_t g_down_sign;
@@ -458,14 +458,7 @@ static bool g_measurement_requested;
 static bool g_skip_post_measure_park;
 static uint32_t g_speed_window_started_ms;
 static uint32_t g_speed_window_counts;
-static uint32_t g_reference_speed_cps;
-static uint32_t g_descent_reference_counts;
-static uint16_t g_contact_bins[CONTACT_NOW_SAMPLES];
-static uint32_t g_contact_bin_sum;
-static uint8_t g_contact_bin_index;
-static uint8_t g_contact_bin_count;
 static bool g_ground_sensor_active;
-static bool g_reference_speed_latched;
 static uint8_t g_button_stable_mask;
 static uint8_t g_button_candidate_mask;
 static uint8_t g_button_debounce[BUTTON_COUNT];
@@ -501,7 +494,6 @@ static void live_view_clear(void);
 static void measurement_counters_reset(uint32_t now, bool clear_result);
 static bool motion_stalled_for(uint32_t now, uint32_t elapsed,
                                uint32_t idle_ms);
-static void contact_speed_reset(void);
 static void ground_sensor_reset(void);
 static void ground_sensor_tick(uint32_t now);
 static bool ground_sensor_descent_hit(uint32_t elapsed);
@@ -512,9 +504,6 @@ static void busy_output_update(void);
 static void interlock_tick(uint32_t now);
 static void enter_descent_contact(uint32_t now, bool gpio_instant_takeup);
 static void config_migrate_v7(const lot_config_v7_t *previous);
-
-_Static_assert(CONTACT_NOW_SAMPLES >= 1U, "Contact speed window is empty");
-_Static_assert(CONTACT_NOW_SAMPLES <= 255U, "Contact speed window index overflows");
 
 _Static_assert((sizeof(config_record_t) % 2U) == 0U,
                "Flash record must contain complete halfwords");
@@ -713,7 +702,7 @@ static int32_t finish_encoder_lengths(void)
     sensor_height_tenth = (int32_t)(
         (g_bunker_config.lower_height_mm +
          g_bunker_config.cylinder_height_mm +
-         (uint32_t)g_config.brake_comp_mm) * 10UL);
+         g_bunker_config.sensor_height_above_base_mm) * 10UL);
     g_result_tenth_mm =
         (sensor_height_tenth > measured_distance_tenth) ?
         (sensor_height_tenth - measured_distance_tenth) : 0;
@@ -835,7 +824,6 @@ static void enter_state(lot_state_t state, uint32_t now)
             g_status.encoder_speed_cps = 0U;
             g_speed_window_counts = 0U;
             g_speed_window_started_ms = now;
-            contact_speed_reset();
             ground_sensor_reset();
             motor_start(false, g_config.run_pwm);
             break;
@@ -885,6 +873,7 @@ static bool start_command(lot_command_t command, uint32_t now)
     if (command == LOT_CMD_STOP)
     {
         g_status.auto_enabled = false;
+        g_local_auto_enabled = false;
         g_measurement_requested = false;
         g_skip_post_measure_park = false;
         if (g_status.errors != LOT_ERROR_NONE)
@@ -1084,6 +1073,7 @@ static void buttons_tick(uint32_t now)
                     else if (index == 4U)
                     {
                         g_status.auto_enabled = !g_status.auto_enabled;
+                        g_local_auto_enabled = g_status.auto_enabled;
                         g_next_auto_ms = now;
                     }
                 }
@@ -1157,17 +1147,6 @@ static bool upper_stop_reached(uint32_t now, uint32_t elapsed)
            ((now - g_fg_last_ms) >= g_config.stall_timeout_ms);
 }
 
-static void contact_speed_reset(void)
-{
-    g_reference_speed_cps = 0U;
-    g_descent_reference_counts = 0U;
-    g_reference_speed_latched = false;
-    g_contact_bin_sum = 0U;
-    g_contact_bin_index = 0U;
-    g_contact_bin_count = 0U;
-    (void)memset(g_contact_bins, 0, sizeof(g_contact_bins));
-}
-
 static void ground_sensor_reset(void)
 {
     g_ground_sensor_active = false;
@@ -1220,35 +1199,6 @@ static void enter_descent_contact(uint32_t now, bool gpio_instant_takeup)
     }
 }
 
-static void contact_speed_push(uint32_t counts)
-{
-    const uint16_t bin = (counts > 65535UL) ? 65535U : (uint16_t)counts;
-
-    if (g_contact_bin_count == CONTACT_NOW_SAMPLES)
-    {
-        g_contact_bin_sum -= g_contact_bins[g_contact_bin_index];
-    }
-    else
-    {
-        ++g_contact_bin_count;
-    }
-    g_contact_bins[g_contact_bin_index] = bin;
-    g_contact_bin_sum += bin;
-    g_contact_bin_index =
-        (uint8_t)((g_contact_bin_index + 1U) % CONTACT_NOW_SAMPLES);
-}
-
-static uint32_t contact_speed_cps(void)
-{
-    if (g_contact_bin_count == 0U)
-    {
-        return 0U;
-    }
-
-    return (g_contact_bin_sum * 1000UL) /
-           ((uint32_t)g_contact_bin_count * SPEED_SAMPLE_MS);
-}
-
 static void encoder_tick(uint32_t now)
 {
     const uint16_t current =
@@ -1266,18 +1216,10 @@ static void encoder_tick(uint32_t now)
             absolute_delta = (uint32_t)(-delta);
         }
         g_status.encoder_position += delta;
-        g_fg_step_sign = (delta > 0) ? 1 : -1;
         g_speed_window_counts += absolute_delta;
         g_last_encoder_ms = now;
         g_state_encoder_seen = true;
-        if (g_status.state == LOT_STATE_DESCENDING)
-        {
-            if (!g_reference_speed_latched)
-            {
-                g_descent_reference_counts += absolute_delta;
-            }
-        }
-        else if ((g_status.state == LOT_STATE_CONTACT) ||
+        if ((g_status.state == LOT_STATE_CONTACT) ||
                  (g_status.state == LOT_STATE_SLACK_TAKEUP) ||
                  (g_status.state == LOT_STATE_ASCENT_RAMP) ||
                  (g_status.state == LOT_STATE_ASCENDING))
@@ -1308,10 +1250,6 @@ static void encoder_tick(uint32_t now)
     {
         g_status.encoder_speed_cps =
             (g_speed_window_counts * 1000UL) / speed_elapsed;
-        if (g_status.state == LOT_STATE_DESCENDING)
-        {
-            contact_speed_push(g_speed_window_counts);
-        }
         g_speed_window_counts = 0U;
         g_speed_window_started_ms = now;
     }
@@ -1382,7 +1320,13 @@ static void motion_tick(uint32_t now)
             }
             else if (upper_stop_reached(now, elapsed))
             {
-                if (interlock_input_active())
+                if (g_measurement_requested)
+                {
+                    motor_stop();
+                    live_counters_zero(now);
+                    enter_state(LOT_STATE_MEASURE_START_WAIT, now);
+                }
+                else if (interlock_input_active())
                 {
                     motor_stop();
                     live_counters_zero(now);
@@ -1397,7 +1341,6 @@ static void motion_tick(uint32_t now)
 
         case LOT_STATE_DESCENDING:
         {
-            bool speed_contact = false;
             bool gpio_contact = false;
             int32_t fg_descent = g_fg_count - g_state_fg_start;
             int32_t selected_descent_tenth;
@@ -1423,23 +1366,6 @@ static void motion_tick(uint32_t now)
                 break;
             }
             g_status.descent_distance = g_live_down_counts;
-            if (!g_reference_speed_latched &&
-                (elapsed > 0U) &&
-                (elapsed >= g_config.contact_ignore_ms))
-            {
-                g_reference_speed_cps =
-                    (g_descent_reference_counts * 1000UL) / elapsed;
-                g_reference_speed_latched = true;
-            }
-            if (g_reference_speed_latched &&
-                (g_contact_bin_count == CONTACT_NOW_SAMPLES) &&
-                (g_reference_speed_cps != 0U) &&
-                (((uint64_t)contact_speed_cps() * 100ULL) <=
-                 ((uint64_t)g_reference_speed_cps *
-                  g_config.contact_speed_percent)))
-            {
-                speed_contact = true;
-            }
             gpio_contact = ground_sensor_descent_hit(elapsed);
             if ((g_config.motor_encoder_enabled != 0U) &&
                 (elapsed > g_config.stall_timeout_ms) &&
@@ -1457,10 +1383,6 @@ static void motion_tick(uint32_t now)
                 if (gpio_contact)
                 {
                     enter_descent_contact(now, true);
-                }
-                else if (speed_contact)
-                {
-                    enter_descent_contact(now, false);
                 }
             }
             break;
@@ -1587,7 +1509,9 @@ static void motion_tick(uint32_t now)
                 ++g_status.measurement_count;
                 live_counters_zero(now);
                 g_measurement_requested = false;
-                g_next_auto_ms = now + g_config.auto_interval_ms;
+                g_next_auto_ms = now +
+                    (g_local_auto_enabled ?
+                     LOCAL_AUTO_INTERVAL_MS : g_config.auto_interval_ms);
                 if (g_skip_post_measure_park)
                 {
                     g_skip_post_measure_park = false;
@@ -1862,7 +1786,8 @@ static void bunker_config_payload(uint8_t *payload, uint8_t *length)
     write_u32(&payload[21], g_bunker_config.cylinder_height_mm);
     write_u32(&payload[25], g_bunker_config.lower_height_mm);
     write_u32(&payload[29], g_bunker_config.lower_bottom_diameter_mm);
-    write_u32(&payload[33], g_bunker_config.load_offset_mm);
+    write_u32(&payload[33],
+              g_bunker_config.sensor_height_above_base_mm);
     write_u32(&payload[37], g_bunker_config.density_x1000);
     write_u32(&payload[41], g_bunker_config.product_factor_x1000);
     *length = 45U;
@@ -1934,6 +1859,7 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
             else
             {
                 g_status.auto_enabled = (request[0] != 0U);
+                g_local_auto_enabled = false;
                 g_next_auto_ms = now;
             }
             break;
@@ -2113,7 +2039,8 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
                 proposed.cylinder_height_mm = read_u32(&request[20]);
                 proposed.lower_height_mm = read_u32(&request[24]);
                 proposed.lower_bottom_diameter_mm = read_u32(&request[28]);
-                proposed.load_offset_mm = read_u32(&request[32]);
+                proposed.sensor_height_above_base_mm =
+                    read_u32(&request[32]);
                 proposed.density_x1000 = read_u32(&request[36]);
                 proposed.product_factor_x1000 = read_u32(&request[40]);
 
@@ -2576,7 +2503,8 @@ static bool bunker_config_values_valid(const bunker_config_t *config)
            (config->lower_bottom_diameter_mm > 0UL) &&
            (config->lower_bottom_diameter_mm <=
             config->bunker_diameter_mm) &&
-           (config->load_offset_mm <= config->bunker_diameter_mm) &&
+           (config->sensor_height_above_base_mm <=
+            config->upper_height_mm) &&
            (config->density_x1000 <= 1000000UL) &&
            (config->product_factor_x1000 <= 1000000UL);
 }

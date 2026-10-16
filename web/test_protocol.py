@@ -129,7 +129,7 @@ class ProtocolTests(unittest.TestCase):
             "model_stroke_mm": 570,
             "upper_height_mm": 1500,
             "upper_top_diameter_mm": 300,
-            "bunker_diameter_mm": 5300,
+            "bunker_diameter_mm": 5600,
             "cylinder_height_mm": 10000,
             "lower_height_mm": 2000,
             "lower_bottom_diameter_mm": 1000,
