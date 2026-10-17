@@ -18,6 +18,7 @@ from protocol import (
     CMD_SET_CONFIG,
     CMD_SET_MANUAL_PWM,
     CMD_STOP,
+    ERROR_NAMES,
     MEASURE_MM_PER_PULSE,
     MOTOR_CIRCUMFERENCE_UM,
     MOTOR_GEAR_RATIO_X10,
@@ -100,6 +101,8 @@ class VirtualController:
         self._park_test_target_mm = 0.0
         self._parking_speed_mm_s = SIMULATION_SPEED_MM_S
         self._measurement_after_park = False
+        self._park_test_before_measure = False
+        self._encoder_mismatch_count = 0
         self._manual_pwm = int(self.config.get("run_pwm", 550))
         self._physical_enc_factor = max(
             0.0001, int(self.config.get("length_cal_x10000", 10000)) / 10000.0
@@ -186,6 +189,8 @@ class VirtualController:
         self._target_path_mm = 0.0
         self._park_test_target_mm = 0.0
         self._measurement_after_park = False
+        self._park_test_before_measure = False
+        self._encoder_mismatch_count = 0
         self.capture.update(
             down_valid=False,
             up_valid=False,
@@ -238,8 +243,11 @@ class VirtualController:
         load_height = float(self.config.get("load_height_mm", 0))
         return max(0.0, sensor_height - fill_height - load_height)
 
-    def _begin_parking(self, measurement_after: bool) -> None:
+    def _begin_parking(
+        self, measurement_after: bool, park_test: bool = False
+    ) -> None:
         self._measurement_after_park = measurement_after
+        self._park_test_before_measure = park_test and measurement_after
         self._target_path_mm = self._configured_ground_path_mm()
         configured_test_mm = (
             float(self.config.get("park_test_pulses", 0)) *
@@ -296,6 +304,8 @@ class VirtualController:
         path = self._target_path_mm
         enc_counts = self._enc_counts(path)
         fg_counts = self._fg_counts(path)
+        enc_path = self._enc_mm(enc_counts)
+        fg_path = self._fg_mm(fg_counts)
         self.capture.update(
             down_valid=True,
             up_valid=True,
@@ -312,9 +322,9 @@ class VirtualController:
             float(self.bunker_config.get("load_offset_mm", 0))
         )
         selected_path = (
-            self._fg_mm(fg_counts)
+            fg_path
             if int(self.config.get("motor_encoder_enabled", 0)) != 0
-            else self._enc_mm(enc_counts)
+            else enc_path
         )
         measured_distance = (
             selected_path + float(self.config.get("load_height_mm", 0))
@@ -323,18 +333,37 @@ class VirtualController:
         self._path_mm = 0.0
         self._refresh_live_values()
         self.status.update(
-            descent_distance_mm=round(self._enc_mm(enc_counts), 1),
-            descent_motor_distance_mm=round(self._fg_mm(fg_counts), 1),
-            ascent_distance_mm=round(self._enc_mm(enc_counts), 1),
-            saved_descent_mm=round(self._enc_mm(enc_counts), 1),
-            saved_ascent_mm=round(self._enc_mm(enc_counts), 1),
+            descent_distance_mm=round(enc_path, 1),
+            descent_motor_distance_mm=round(fg_path, 1),
+            ascent_distance_mm=round(enc_path, 1),
+            saved_descent_mm=round(enc_path, 1),
+            saved_ascent_mm=round(enc_path, 1),
             travel_difference_mm=0.0,
             result_mm=round(result_mm, 1),
             measurement_count=int(self.status["measurement_count"]) + 1,
             ground_detect=False,
         )
-        self._phase = "ready"
-        self._set_state(1)
+        mismatch_mm = int(self.config.get("mismatch_mm", 0))
+        if mismatch_mm > 0 and abs(enc_path - fg_path) > mismatch_mm:
+            self._encoder_mismatch_count += 1
+        else:
+            self._encoder_mismatch_count = 0
+        mismatch_fault = (
+            mismatch_mm > 0 and
+            self._encoder_mismatch_count >=
+            int(self.config.get("error_measurement_limit", 2))
+        )
+        if mismatch_fault:
+            self._phase = "fault"
+            self.status.update(
+                auto=False,
+                errors=1 << 4,
+                error_names=[ERROR_NAMES[4]],
+            )
+            self._set_state(8)
+        else:
+            self._phase = "ready"
+            self._set_state(1)
         self._next_auto = now + (
             max(1000, int(self.config.get("auto_interval_ms", 60000))) / 1000.0
         )
@@ -364,12 +393,19 @@ class VirtualController:
             )
         elif command == CMD_MOVE_DOWN:
             self._phase = "manual_down"
+            on_ground = (
+                self._path_mm >= self._configured_ground_path_mm()
+            )
+            self.status["ground_detect"] = on_ground
             self._set_state(
-                3, motor_enabled=self._manual_pwm != 0,
-                motor_up=False, pwm=self._manual_pwm,
+                3,
+                motor_enabled=self._manual_pwm != 0 and not on_ground,
+                motor_up=False,
+                pwm=0 if on_ground else self._manual_pwm,
             )
         elif command == CMD_STOP:
             self.status["auto"] = False
+            self._encoder_mismatch_count = 0
             self._phase = "ready"
             self._set_state(1)
         elif command == CMD_PARK:
@@ -380,12 +416,19 @@ class VirtualController:
             self._begin_parking(True)
         elif command == CMD_SET_AUTO:
             self.status["auto"] = bool(payload[0])
+            if not self.status["auto"]:
+                self._encoder_mismatch_count = 0
             self._next_auto = now
         elif command == CMD_SET_MANUAL_PWM:
             self._manual_pwm = int.from_bytes(payload, "little")
             if int(self.status["state"]) in (2, 3):
-                self.status["pwm"] = self._manual_pwm
-                self.status["motor_enabled"] = self._manual_pwm != 0
+                if (int(self.status["state"]) == 3 and
+                        self.status.get("ground_detect")):
+                    self.status["pwm"] = 0
+                    self.status["motor_enabled"] = False
+                else:
+                    self.status["pwm"] = self._manual_pwm
+                    self.status["motor_enabled"] = self._manual_pwm != 0
         elif command == CMD_CLEAR_ERROR:
             self._reset_runtime()
         elif command == CMD_RESET_ENCODERS:
@@ -393,6 +436,8 @@ class VirtualController:
             self._refresh_live_values()
         elif command == CMD_SET_CONFIG:
             self.config = decode_config(b"\x00" + payload)
+            if int(self.config.get("mismatch_mm", 0)) == 0:
+                self._encoder_mismatch_count = 0
         elif command == CMD_SET_BUNKER_CONFIG:
             self.bunker_config = decode_bunker_config(b"\x00" + payload)
         elif command == CMD_GET_CALIBRATION_CAPTURE:
@@ -418,13 +463,26 @@ class VirtualController:
 
         if (self._phase == "ready" and self.status["auto"] and
                 now >= self._next_auto):
-            self._begin_parking(True)
+            self._begin_parking(True, park_test=True)
         elif self._phase == "manual_down":
-            self._path_mm += run_speed * dt
-            self._refresh_live_values(run_speed)
-            self.status["ground_detect"] = (
-                self._path_mm >= self._configured_ground_path_mm()
-            )
+            ground_mm = self._configured_ground_path_mm()
+            if self._path_mm >= ground_mm:
+                self._path_mm = ground_mm
+                self.status["ground_detect"] = True
+                self.status["motor_enabled"] = False
+                self.status["pwm"] = 0
+                self._refresh_live_values(0.0)
+            else:
+                self._path_mm += run_speed * dt
+                if self._path_mm >= ground_mm:
+                    self._path_mm = ground_mm
+                    self.status["ground_detect"] = True
+                    self.status["motor_enabled"] = False
+                    self.status["pwm"] = 0
+                    self._refresh_live_values(0.0)
+                else:
+                    self._refresh_live_values(run_speed)
+                    self.status["ground_detect"] = False
         elif self._phase == "manual_up":
             self._path_mm = max(0.0, self._path_mm - run_speed * dt)
             self._refresh_live_values(run_speed)
@@ -436,7 +494,8 @@ class VirtualController:
             self._refresh_live_values(self._parking_speed_mm_s)
             if (self._path_mm <= 0.0 and
                     now - self._phase_started >= PARK_MIN_SECONDS):
-                if self._measurement_after_park:
+                if (self._measurement_after_park and
+                        not self._park_test_before_measure):
                     self._measurement_after_park = False
                     self._phase = "measure_wait"
                     self._set_state(13)

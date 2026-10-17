@@ -58,6 +58,11 @@
 #define TAKEUP_CONFIRM_TENTH_MM    10L
 #define ASCENT_RAMP_TENTH_MM       500L
 #define LOCAL_AUTO_INTERVAL_MS     3000UL
+#define DESCENT_START_RETRY_MS     1000UL
+#define DESCENT_START_MAX_RETRIES  3U
+#define PARK_RELEASE_MIN_MS        1000UL
+#define PARK_TEST_START_RETRY_MS   1000UL
+#define PARK_TEST_MAX_RETRIES      3U
 
 #if defined(STM32F103x6)
 #define DEVICE_FLASH_SIZE          (32UL * 1024UL)
@@ -417,7 +422,7 @@ static uint8_t g_last_response[LOT_PROTOCOL_MAX_PAYLOAD];
 static uint8_t g_last_response_length;
 
 static lot_config_t g_config = {
-    550U, 450U, 450U, 700U, 100U, 3000U, 1500U, 4U,
+    550U, 450U, 450U, 700U, 100U, 3000U, 3000U, 4U,
     80U, 10U, 20U, 10000U, 360000UL, 60000UL, LENGTH_CAL_SCALE, LENGTH_CAL_SCALE,
     0L, 2000U, 0U, 110U, 0U, 0, 2U, 1000UL, 945U, 0
 };
@@ -456,6 +461,11 @@ static bool g_state_encoder_seen;
 static bool g_state_up_seen;
 static bool g_measurement_requested;
 static bool g_skip_post_measure_park;
+static uint16_t g_encoder_mismatch_count;
+static uint8_t g_descent_start_retries;
+static uint8_t g_park_test_start_retries;
+static bool g_park_test_retry_waiting;
+static uint32_t g_park_test_retry_started_ms;
 static uint32_t g_speed_window_started_ms;
 static uint32_t g_speed_window_counts;
 static bool g_ground_sensor_active;
@@ -667,6 +677,7 @@ static int32_t finish_encoder_lengths(void)
     int32_t difference;
     int32_t up_fg_travel = g_fg_count - g_contact_fg_count;
     int32_t motor_up_tenth;
+    int32_t encoder_motor_difference_tenth;
     int32_t measured_distance_tenth;
     int32_t sensor_height_tenth;
 
@@ -678,6 +689,11 @@ static int32_t finish_encoder_lengths(void)
     g_saved_up_fg_counts = up_fg_travel;
     g_calibration_capture_flags |= 0x02U;
     motor_up_tenth = motor_pulses_to_tenth_mm(up_fg_travel);
+    encoder_motor_difference_tenth = motor_up_tenth - up_tenth;
+    if (encoder_motor_difference_tenth < 0)
+    {
+        encoder_motor_difference_tenth = -encoder_motor_difference_tenth;
+    }
 
     if (down_tenth < 0)
     {
@@ -708,7 +724,7 @@ static int32_t finish_encoder_lengths(void)
         (sensor_height_tenth - measured_distance_tenth) : 0;
     g_status.travel_difference = difference;
 
-    return difference;
+    return encoder_motor_difference_tenth;
 }
 
 static void live_counters_zero(uint32_t now)
@@ -810,7 +826,14 @@ static void enter_state(lot_state_t state, uint32_t now)
             motor_start(true, g_manual_pwm);
             break;
         case LOT_STATE_MANUAL_DOWN:
-            motor_start(false, g_manual_pwm);
+            if (ground_sensor_raw_active())
+            {
+                motor_stop();
+            }
+            else
+            {
+                motor_start(false, g_manual_pwm);
+            }
             break;
         case LOT_STATE_PARKING:
             motor_start(true, g_config.park_pwm);
@@ -841,6 +864,10 @@ static void enter_state(lot_state_t state, uint32_t now)
             motor_start(true, g_config.run_pwm);
             break;
         case LOT_STATE_PARK_RELEASE:
+            g_park_test_start_retries = 0U;
+            g_park_test_retry_waiting = false;
+            motor_stop();
+            break;
         case LOT_STATE_PARK_TEST_STOP:
         case LOT_STATE_MEASURE_START_WAIT:
         case LOT_STATE_INTERLOCK_WAIT:
@@ -851,6 +878,7 @@ static void enter_state(lot_state_t state, uint32_t now)
             motor_start(false, g_config.park_pwm);
             break;
         case LOT_STATE_PARK_RETURN:
+            g_descent_start_retries = 0U;
             motor_start(true, g_config.park_pwm);
             break;
         default:
@@ -876,6 +904,7 @@ static bool start_command(lot_command_t command, uint32_t now)
         g_local_auto_enabled = false;
         g_measurement_requested = false;
         g_skip_post_measure_park = false;
+        g_encoder_mismatch_count = 0U;
         if (g_status.errors != LOT_ERROR_NONE)
         {
             enter_state(LOT_STATE_FAULT, now);
@@ -1158,7 +1187,9 @@ static void ground_sensor_tick(uint32_t now)
 
     g_ground_sensor_active = ground_sensor_raw_active();
 
-    if ((g_status.state == LOT_STATE_DESCENDING) && g_ground_sensor_active)
+    if (((g_status.state == LOT_STATE_DESCENDING) ||
+         (g_status.state == LOT_STATE_MANUAL_DOWN)) &&
+        g_ground_sensor_active)
     {
         motor_stop();
     }
@@ -1310,7 +1341,13 @@ static void motion_tick(uint32_t now)
             break;
 
         case LOT_STATE_MANUAL_UP:
+            break;
+
         case LOT_STATE_MANUAL_DOWN:
+            if (ground_sensor_raw_active())
+            {
+                motor_stop();
+            }
             break;
 
         case LOT_STATE_PARKING:
@@ -1320,13 +1357,15 @@ static void motion_tick(uint32_t now)
             }
             else if (upper_stop_reached(now, elapsed))
             {
-                if (g_measurement_requested)
+                if (g_measurement_requested && !g_status.auto_enabled)
                 {
                     motor_stop();
                     live_counters_zero(now);
+                    g_descent_start_retries = 0U;
                     enter_state(LOT_STATE_MEASURE_START_WAIT, now);
                 }
-                else if (interlock_input_active())
+                else if (interlock_input_active() &&
+                         !g_measurement_requested)
                 {
                     motor_stop();
                     live_counters_zero(now);
@@ -1374,9 +1413,19 @@ static void motion_tick(uint32_t now)
                 set_fault(LOT_ERROR_MOT_FG_YELLOW_STALLED, now);
             }
             else if ((g_config.motor_encoder_enabled == 0U) &&
-                     (elapsed > 1500U) && !g_state_encoder_seen)
+                     !g_state_encoder_seen &&
+                     (elapsed > DESCENT_START_RETRY_MS))
             {
-                set_fault(LOT_ERROR_ENCODER_MISSING, now);
+                if (g_descent_start_retries < DESCENT_START_MAX_RETRIES)
+                {
+                    ++g_descent_start_retries;
+                    motor_stop();
+                    enter_state(LOT_STATE_MEASURE_START_WAIT, now);
+                }
+                else
+                {
+                    set_fault(LOT_ERROR_ENCODER_MISSING, now);
+                }
             }
             else
             {
@@ -1502,16 +1551,44 @@ static void motion_tick(uint32_t now)
                      ((g_config.motor_encoder_enabled == 0U) ||
                       (fg_idle >= g_config.stall_timeout_ms)))
             {
-                const int32_t difference_tenth_mm = finish_encoder_lengths();
+                const int32_t encoder_motor_difference_tenth =
+                    finish_encoder_lengths();
+                bool encoder_mismatch_fault = false;
 
                 live_view_clear();
-                (void)difference_tenth_mm;
                 ++g_status.measurement_count;
+                if (g_config.mismatch_mm == 0U)
+                {
+                    g_encoder_mismatch_count = 0U;
+                }
+                else if (encoder_motor_difference_tenth >
+                         ((int32_t)g_config.mismatch_mm * 10))
+                {
+                    if (g_encoder_mismatch_count < UINT16_MAX)
+                    {
+                        ++g_encoder_mismatch_count;
+                    }
+                    encoder_mismatch_fault =
+                        g_encoder_mismatch_count >=
+                        g_config.error_measurement_limit;
+                }
+                else
+                {
+                    g_encoder_mismatch_count = 0U;
+                }
                 live_counters_zero(now);
                 g_measurement_requested = false;
                 g_next_auto_ms = now +
                     (g_local_auto_enabled ?
                      LOCAL_AUTO_INTERVAL_MS : g_config.auto_interval_ms);
+                if (encoder_mismatch_fault)
+                {
+                    g_status.auto_enabled = false;
+                    g_local_auto_enabled = false;
+                    g_skip_post_measure_park = false;
+                    set_fault(LOT_ERROR_TRAVEL_MISMATCH, now);
+                    break;
+                }
                 if (g_skip_post_measure_park)
                 {
                     g_skip_post_measure_park = false;
@@ -1526,11 +1603,17 @@ static void motion_tick(uint32_t now)
         }
 
         case LOT_STATE_PARK_RELEASE:
-            if (elapsed >= g_config.park_release_ms)
+        {
+            const uint32_t release_wait_ms =
+                (g_config.park_release_ms < PARK_RELEASE_MIN_MS) ?
+                PARK_RELEASE_MIN_MS : (uint32_t)g_config.park_release_ms;
+
+            if (elapsed >= release_wait_ms)
             {
                 enter_state(LOT_STATE_PARK_TEST_DOWN, now);
             }
             break;
+        }
 
         case LOT_STATE_PARK_TEST_DOWN:
         {
@@ -1540,6 +1623,21 @@ static void motion_tick(uint32_t now)
             int32_t fg_delta = g_fg_count - g_state_fg_start;
             int32_t fg_abs;
             bool park_test_limit_reached;
+
+            if (g_park_test_retry_waiting)
+            {
+                if ((now - g_park_test_retry_started_ms) >=
+                    PARK_TEST_START_RETRY_MS)
+                {
+                    g_state_started_ms = now;
+                    g_state_encoder_start = g_status.encoder_position;
+                    g_state_fg_start = g_fg_count;
+                    g_state_encoder_seen = false;
+                    g_park_test_retry_waiting = false;
+                    motor_start(false, g_config.park_pwm);
+                }
+                break;
+            }
 
             if (fg_delta < 0)
             {
@@ -1564,6 +1662,22 @@ static void motion_tick(uint32_t now)
                      g_state_encoder_seen)
             {
                 enter_state(LOT_STATE_PARK_TEST_STOP, now);
+            }
+            else if (!g_state_encoder_seen &&
+                     (fg_abs <= (int32_t)PARK_FG_MOVEMENT_PULSES) &&
+                     (elapsed >= PARK_TEST_START_RETRY_MS))
+            {
+                if (g_park_test_start_retries < PARK_TEST_MAX_RETRIES)
+                {
+                    ++g_park_test_start_retries;
+                    motor_stop();
+                    g_park_test_retry_waiting = true;
+                    g_park_test_retry_started_ms = now;
+                }
+                else
+                {
+                    set_fault(LOT_ERROR_PARK_TEST_FAILED, now);
+                }
             }
             else if (elapsed >= g_config.park_test_ms)
             {
@@ -1623,12 +1737,18 @@ static void motion_tick(uint32_t now)
             break;
 
         case LOT_STATE_MEASURE_START_WAIT:
-            if (elapsed >= MEASURE_REVERSAL_PAUSE_MS)
+        {
+            const uint32_t release_wait_ms =
+                (g_config.park_release_ms < PARK_RELEASE_MIN_MS) ?
+                PARK_RELEASE_MIN_MS : (uint32_t)g_config.park_release_ms;
+
+            if (elapsed >= release_wait_ms)
             {
                 measurement_counters_reset(now, false);
                 enter_state(LOT_STATE_DESCENDING, now);
             }
             break;
+        }
 
         case LOT_STATE_INTERLOCK_STOP:
             if (elapsed >= MEASURE_REVERSAL_PAUSE_MS)
@@ -1861,6 +1981,10 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
                 g_status.auto_enabled = (request[0] != 0U);
                 g_local_auto_enabled = false;
                 g_next_auto_ms = now;
+                if (request[0] == 0U)
+                {
+                    g_encoder_mismatch_count = 0U;
+                }
             }
             break;
 
@@ -1872,6 +1996,7 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
             else
             {
                 g_status.errors = LOT_ERROR_NONE;
+                g_encoder_mismatch_count = 0U;
                 enter_state(interlock_input_active() ?
                             LOT_STATE_INTERLOCK_WAIT :
                             LOT_STATE_READY, now);
@@ -1899,7 +2024,14 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
                     }
                     else if (g_status.state == LOT_STATE_MANUAL_DOWN)
                     {
-                        motor_start(false, g_manual_pwm);
+                        if (ground_sensor_raw_active())
+                        {
+                            motor_stop();
+                        }
+                        else
+                        {
+                            motor_start(false, g_manual_pwm);
+                        }
                     }
                 }
             }
@@ -1983,6 +2115,7 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
                     (proposed.length_cal_x10000 > LENGTH_CAL_MAX) ||
                     (proposed.motor_cal_x10000 < LENGTH_CAL_MIN) ||
                     (proposed.motor_cal_x10000 > LENGTH_CAL_MAX) ||
+                    (proposed.mismatch_mm > 10000U) ||
                     (proposed.length_cal_offset_tenth_mm <
                      LENGTH_CAL_OFFSET_MIN) ||
                     (proposed.length_cal_offset_tenth_mm >
@@ -2008,6 +2141,10 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
                 else if (memcmp(&proposed, &g_config, sizeof(g_config)) != 0)
                 {
                     g_config = proposed;
+                    if (g_config.mismatch_mm == 0U)
+                    {
+                        g_encoder_mismatch_count = 0U;
+                    }
                     if (!config_save())
                     {
                         g_status.errors |= LOT_ERROR_CONFIG;
@@ -2531,6 +2668,7 @@ static bool config_values_valid(const lot_config_t *config)
            (config->length_cal_x10000 <= LENGTH_CAL_MAX) &&
            (config->motor_cal_x10000 >= LENGTH_CAL_MIN) &&
            (config->motor_cal_x10000 <= LENGTH_CAL_MAX) &&
+           (config->mismatch_mm <= 10000U) &&
            (config->length_cal_offset_tenth_mm >= LENGTH_CAL_OFFSET_MIN) &&
            (config->length_cal_offset_tenth_mm <= LENGTH_CAL_OFFSET_MAX) &&
            (config->brake_comp_mm <= 10000U) &&

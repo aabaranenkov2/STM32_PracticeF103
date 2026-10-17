@@ -97,8 +97,11 @@ class FactoryProfileTests(unittest.TestCase):
             profile["controller_config"]["length_cal_x10000"], 10747
         )
         self.assertEqual(
-            profile["controller_config"]["motor_cal_x10000"], 12221
+            profile["controller_config"]["motor_cal_x10000"], 9874
         )
+        self.assertEqual(profile["controller_config"]["mismatch_mm"], 0)
+        self.assertEqual(profile["controller_config"]["park_release_ms"], 1000)
+        self.assertEqual(profile["controller_config"]["park_test_ms"], 3000)
         self.assertEqual(
             profile["controller_config"]["motor_encoder_enabled"], 1
         )

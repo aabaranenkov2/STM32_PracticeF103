@@ -5,6 +5,7 @@ from protocol import (
     CMD_CLEAR_ERROR,
     CMD_GET_CALIBRATION_CAPTURE,
     CMD_MEASURE_AUTO_ONCE,
+    CMD_MOVE_DOWN,
     CMD_PARK,
     CMD_SET_AUTO,
     CMD_SET_BUNKER_CONFIG,
@@ -91,6 +92,33 @@ class SimulatorTests(unittest.TestCase):
         self.assertGreater(capture["raw_down_counts"], 0)
         self.assertGreater(capture["raw_down_fg_count"], 0)
 
+    def test_encoder_mismatch_control_stops_after_configured_limit(self):
+        config = test_config()
+        config["mismatch_mm"] = 10
+        config["error_measurement_limit"] = 2
+        simulator = VirtualController(config, test_bunker_config())
+        simulator.config["motor_cal_x10000"] = 15000
+
+        self.run_measurement(simulator)
+        self.assertEqual(simulator.status["state"], 1)
+        self.run_measurement(simulator)
+
+        self.assertEqual(simulator.status["state"], 8)
+        self.assertEqual(simulator.status["errors"], 1 << 4)
+        self.assertFalse(simulator.status["auto"])
+
+    def test_encoder_mismatch_control_can_be_disabled(self):
+        config = test_config()
+        config["mismatch_mm"] = 0
+        simulator = VirtualController(config, test_bunker_config())
+        simulator.config["motor_cal_x10000"] = 15000
+
+        self.run_measurement(simulator)
+        self.run_measurement(simulator)
+
+        self.assertEqual(simulator.status["state"], 1)
+        self.assertEqual(simulator.status["errors"], 0)
+
     def test_parking_runs_release_test_and_return_states(self):
         simulator = VirtualController(test_config(), test_bunker_config())
         simulator.handle(CMD_PARK)
@@ -114,6 +142,26 @@ class SimulatorTests(unittest.TestCase):
 
         self.assertEqual(simulator.status["state"], 4)
         self.assertEqual(simulator.status["state_name"], "Парковка")
+
+    def test_periodic_mode_parks_before_measure_not_after(self):
+        config = test_config()
+        config["auto_interval_ms"] = 60000
+        simulator = VirtualController(config, test_bunker_config())
+        simulator.handle(CMD_SET_AUTO, b"\x01")
+        states = [simulator.status["state"]]
+        now = time.monotonic()
+
+        for step in range(1, 400):
+            completed = simulator.tick(now + step * 0.1)
+            if states[-1] != simulator.status["state"]:
+                states.append(simulator.status["state"])
+            if completed:
+                break
+
+        self.assertEqual(states[:7], [1, 4, 9, 10, 12, 11, 13])
+        self.assertIn(5, states)
+        self.assertEqual(states[-1], 1)
+        self.assertNotIn(9, states[states.index(5):])
 
     def test_measurement_skips_release_and_parking_test(self):
         simulator = VirtualController(test_config(), test_bunker_config())
@@ -205,6 +253,25 @@ class SimulatorTests(unittest.TestCase):
 
         for key, value in schematic.items():
             self.assertEqual(simulator.bunker_config[key], value)
+
+    def test_manual_down_stops_on_ground(self):
+        simulator = VirtualController(test_config(), test_bunker_config())
+        self.assertEqual(simulator.handle(CMD_MOVE_DOWN), b"\x00")
+        now = time.monotonic()
+        stopped = False
+        for step in range(1, 200):
+            simulator.tick(now + step * 0.1)
+            if simulator.status["ground_detect"]:
+                stopped = True
+                path_at_stop = simulator.status["simulation_path_mm"]
+                self.assertFalse(simulator.status["motor_enabled"])
+                self.assertEqual(simulator.status["pwm"], 0)
+                simulator.tick(now + (step + 5) * 0.1)
+                self.assertFalse(simulator.status["motor_enabled"])
+                self.assertEqual(
+                    simulator.status["simulation_path_mm"], path_at_stop)
+                break
+        self.assertTrue(stopped, "manual down did not reach ground")
 
 
 if __name__ == "__main__":

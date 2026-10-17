@@ -38,9 +38,12 @@
     h2 { font-size: 1.05rem; margin-bottom: 16px; color: #c9d9ec; }
     .app-title { display: flex; align-items: baseline; gap: 10px; }
     .app-version { color: var(--muted); font-size: .72rem; white-space: nowrap; }
+    .header-status { display: flex; align-items: center; gap: 18px; }
     .connection { display: flex; align-items: center; gap: 9px; color: var(--muted); }
     .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 12px currentColor; }
     .dot.online { background: var(--ok); }
+    .dot.ground { background: #4a2230; box-shadow: none; }
+    .dot.ground.active { background: var(--danger); box-shadow: 0 0 12px currentColor; }
     main { width: min(1500px, 100%); margin: auto; padding: 24px clamp(14px, 3vw, 36px) 50px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; }
     .card { grid-column: span 4; border: 1px solid var(--line); border-radius: 18px; background: #101d2fe8; padding: 20px; box-shadow: 0 14px 40px #0004; }
     .wide { grid-column: span 8; }
@@ -1191,7 +1194,10 @@
       <h1>LotSensor V1</h1>
       <span class="app-version" id="appVersion">Версия …</span>
     </div>
-    <div class="connection"><span class="dot" id="connectionDot"></span><span id="connectionText">Нет связи</span></div>
+    <div class="header-status">
+      <div class="connection"><span class="dot" id="connectionDot"></span><span id="connectionText">Нет связи</span></div>
+      <div class="connection"><span class="dot ground" id="groundDot"></span><span id="groundText">Грунт</span></div>
+    </div>
   </header>
 
   <main>
@@ -1250,7 +1256,7 @@
         <label class="setting"><span>Скорость парковки, %</span><input name="park_speed_percent" type="number" min="0" max="100" step="1"><small>Скорость подъёма к верхнему упору, короткого теста вниз и возврата на упор.</small></label>
         <label class="setting"><span>Ход теста парковки, мм</span><input name="park_test_mm" type="number" min="0" max="1000" step="1"><small>Максимальный путь короткого спуска у верхнего упора. Это не длина измерения до грунта.</small></label>
         <label class="setting"><span>Время теста парковки, мс</span><input name="park_test_ms" type="number" min="200"><small>Максимальная длительность короткого спуска. Если энкодер двигателя включён, вращается, а основной энкодер стоит, фиксируется зажатие груза.</small></label>
-        <label class="setting"><span>Пауза проверки парковки, мс</span><input name="park_release_ms" type="number" min="100"><small>Ожидание между первым достижением упора и проверочным движением вниз. Перед измерительным спуском используется отдельная короткая пауза 20 мс.</small></label>
+        <label class="setting"><span>Пауза проверки парковки, мс</span><input name="park_release_ms" type="number" min="100"><small>Ожидание после верхнего упора перед проверочным или измерительным спуском. Прошивка гарантирует не менее 1000 мс.</small></label>
         <label class="setting"><span>Задержка контроля грунта, мс</span><input name="contact_ignore_ms" type="number" min="0" max="60000" step="100"><small>Столько длится разгон. Контакт в это время не проверяется. В конце запоминается средняя скорость энкодера за всю задержку, и дальше порог грунта считается только от неё.</small></label>
         <label class="setting"><span>Скорость контакта Enc, %</span><input name="contact_speed_percent" type="number" min="1" max="100"><small>Подъём начинается, когда средняя скорость за последние 0,5 с становится не выше этого процента от скорости, измеренной в конце задержки. Короткий пропуск импульсов грунтом не считается, поэтому скорость измерения можно снижать.</small></label>
         <label class="setting"><span>Максимальное время одного хода, с</span><input name="motion_timeout_s" type="number" min="5" max="600" step="1"><small>Предельное время отдельного спуска, подъёма или парковки. После превышения двигатель немедленно останавливается.</small></label>
@@ -1259,6 +1265,9 @@
         <label class="setting"><span>Остановка Enc у упора, мс</span><input name="contact_timeout_ms" type="number" min="50"><small>При подъёме основной энкодер должен молчать это время. Если энкодер двигателя включён, он должен замолчать вместе с ним. На контакт с грунтом не влияет.</small></label>
         <label class="setting"><span>Замедление перед упором, %</span><input name="slowdown_remaining_percent" type="number" min="1" max="100"><small>На последних процентах пути вверх скорость измерения снижается. Значение 10 означает последние 10 % пути.</small></label>
         <label class="setting"><span>Делитель замедления ×0,1</span><input name="slowdown_divisor_tenths" type="number" min="10"><small>Степень снижения скорости: 10 — без снижения, 20 — скорость уменьшается в 2 раза.</small></label>
+        <label class="setting"><span>Контроль Enc и Mot_FG</span><input name="mismatch_enabled" id="mismatchEnabled" type="checkbox"><small>Если включён, периодический режим остановится после заданного количества последовательных расхождений. Выключите, если нить не установлена на Enc.</small></label>
+        <label class="setting"><span>Допустимое расхождение, мм</span><input name="mismatch_mm" id="mismatchMm" type="number" min="1" max="10000" step="1" value="100"><small>Максимальная разница пути подъёма Enc и Mot_FG. Значение применяется только при включённом контроле.</small></label>
+        <label class="setting"><span>Ошибок подряд до останова</span><input name="error_measurement_limit" id="errorMeasurementLimit" type="number" min="1" max="1000" step="1" value="2"><small>Счётчик сбрасывается после исправного замера, выключения режима или сброса ошибки.</small></label>
         <label class="setting"><span>Высота груза, мм</span><input name="load_height_mm" type="number" min="0" max="10000" step="1"><small>Прибавляется к измеренному ходу нити. При тарировке вычитается из эталона, чтобы смена груза не изменяла коэффициент энкодера.</small></label>
       </form>
       <div class="factory-profile-row">
@@ -1683,6 +1692,7 @@
       "contact_ignore_ms",
       "max_descent_mm",
       "load_height_mm",
+      "error_measurement_limit",
       "slowdown_remaining_percent",
       "slowdown_divisor_tenths"
     ];
@@ -1875,6 +1885,14 @@
         motionTimeoutField.value =
           (Number(config.motion_timeout_ms) / 1000).toFixed(0);
       }
+      const mismatchEnabled = $("#mismatchEnabled");
+      const mismatchField = $("#mismatchMm");
+      if (mismatchEnabled && mismatchField) {
+        const configuredMismatch = Number(config.mismatch_mm) || 0;
+        mismatchEnabled.checked = configuredMismatch > 0;
+        mismatchField.value = configuredMismatch > 0 ? configuredMismatch : 100;
+        mismatchField.disabled = !mismatchEnabled.checked;
+      }
       CONFIG_FIELD_NAMES.forEach(key => {
         const field = document.querySelector(`#deviceConfig [name="${key}"]`);
         if (field && key in config) field.value = config[key];
@@ -1900,7 +1918,8 @@
         takeup_pwm: percentToPermille(values.takeup_speed_percent),
         contact_timeout_ms: Number(values.contact_timeout_ms),
         stall_timeout_ms: Number(values.stall_timeout_ms),
-        mismatch_mm: Number(lastDeviceConfig.mismatch_mm) || 65535,
+        mismatch_mm:
+          values.mismatch_enabled === "on" ? Number(values.mismatch_mm) : 0,
         park_release_ms: Number(values.park_release_ms),
         park_test_ms: Number(values.park_test_ms),
         park_test_pulses: mmToCalibratedEncoderCounts(values.park_test_mm),
@@ -1912,7 +1931,7 @@
         descent_correction_mm: Number(lastDeviceConfig.descent_correction_mm) || 0,
         ascent_correction_mm: Number(lastDeviceConfig.ascent_correction_mm) || 0,
         load_height_mm: Number(values.load_height_mm),
-        error_measurement_limit: Number(lastDeviceConfig.error_measurement_limit) || 1000,
+        error_measurement_limit: Number(values.error_measurement_limit),
         motor_encoder_enabled:
           Number(lastDeviceConfig.motor_encoder_enabled) !== 0 ? 1 : 0,
         slowdown_remaining_percent: Number(values.slowdown_remaining_percent),
@@ -2701,12 +2720,11 @@
           (Number(data.errors) & (2048 | 4096)) !== 0;
         appendPendingMeasurement(
           noAscentResult ? null : (Number(data.result_mm) || 0), data);
-        const ignoredBits = 32 | 1024 | 16;
+        const ignoredBits = 32 | 1024;
         const qualityErrors = Number(data.errors) & ~ignoredBits;
         const note = (data.error_names || [])
           .filter(name =>
             name !== "Ошибка UART" &&
-            name !== "Расхождение хода вверх и вниз" &&
             name !== "Тест Mot_FG: подъём не совпал с Enc")
           .join("; ");
         if (currentState === 8 && qualityErrors !== 0) {
@@ -2717,7 +2735,7 @@
       }
       if (autoBatchActive && currentState === 8 && !autoRecoveryPending) {
         const errors = Number(data.errors) & ~32;
-        const recoverableErrors = 16 | 512 | 2048 | 4096;
+        const recoverableErrors = 512 | 2048 | 4096;
         if (!cycleReachedMeasurement) {
           stopAutoBatch("Автомат остановлен: проверка перед измерением не выполнена");
         } else if ((errors & ~recoverableErrors) !== 0) {
@@ -2744,7 +2762,10 @@
       const descentMm = Math.max(0, Number(data.descent_distance_mm) || 0);
       collectMeasurementDiagnostics(data);
       $("#connectionDot").classList.toggle("online", data.connected);
-      $("#connectionText").textContent = data.connected ? `${data.port}${data.simulated ? " (симулятор)" : ""}` : "Нет связи";
+      $("#connectionText").textContent = data.connected
+        ? `Связь ${data.port}${data.simulated ? " (симулятор)" : ""}`
+        : "Нет связи";
+      $("#groundDot").classList.toggle("active", Boolean(data.ground_detect));
       const stateNode = $("#state");
       const simulationRunning =
         Boolean(data.simulated) && Number(data.state) !== 1;
@@ -2878,7 +2899,6 @@
       const visibleErrors = (data.error_names || [])
         .filter(name =>
           name !== "Ошибка UART" &&
-          name !== "Расхождение хода вверх и вниз" &&
           name !== "Тест Mot_FG: подъём не совпал с Enc");
       const faultState = currentState === 8;
       $("#errors").textContent = visibleErrors.length
@@ -3593,6 +3613,9 @@
 
     $("#deviceConfig").addEventListener("submit", event => {
       event.preventDefault();
+    });
+    $("#mismatchEnabled").addEventListener("change", event => {
+      $("#mismatchMm").disabled = !event.target.checked;
     });
     $("#deviceConfig").addEventListener("input", () => {
       configDirty = true;
