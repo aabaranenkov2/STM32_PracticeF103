@@ -8,6 +8,7 @@ import time
 from protocol import (
     CMD_CLEAR_ERROR,
     CMD_GET_CALIBRATION_CAPTURE,
+    CMD_GET_DIAGNOSTICS,
     CMD_MEASURE_AUTO_ONCE,
     CMD_MOVE_DOWN,
     CMD_MOVE_UP,
@@ -91,6 +92,16 @@ class VirtualController:
             "raw_up_counts": 0,
             "raw_down_fg_count": 0,
             "raw_up_fg_count": 0,
+        }
+        self.diagnostics = {
+            "sequence": 0,
+            "cycle_ms": 0,
+            "measurement_ms": 0,
+            "parking_ms": 0,
+            "descent_ms": 0,
+            "ascent_ms": 0,
+            "descent_retries": 0,
+            "park_retries": 0,
         }
         self._phase = "ready"
         self._phase_started = now
@@ -198,6 +209,16 @@ class VirtualController:
             raw_up_counts=0,
             raw_down_fg_count=0,
             raw_up_fg_count=0,
+        )
+        self.diagnostics.update(
+            sequence=0,
+            cycle_ms=0,
+            measurement_ms=0,
+            parking_ms=0,
+            descent_ms=0,
+            ascent_ms=0,
+            descent_retries=0,
+            park_retries=0,
         )
         self.status.update(
             errors=0,
@@ -330,6 +351,27 @@ class VirtualController:
             selected_path + float(self.config.get("load_height_mm", 0))
         )
         result_mm = max(0.0, sensor_height - measured_distance)
+        run_speed = SIMULATION_SPEED_MM_S * max(
+            0.2, float(self.config.get("run_pwm", 550)) / 550.0
+        )
+        descent_ms = int(round(path / run_speed * 1000.0))
+        ascent_ms = int(round(
+            path / run_speed * 1000.0 + TAKEUP_SECONDS * 1000.0
+        ))
+        parking_ms = int(round(
+            (PARK_MIN_SECONDS * 3.0 + MEASURE_REVERSAL_SECONDS) * 1000.0
+        ))
+        measurement_ms = descent_ms + ascent_ms
+        self.diagnostics.update(
+            sequence=int(self.diagnostics["sequence"]) + 1,
+            cycle_ms=parking_ms + measurement_ms,
+            measurement_ms=measurement_ms,
+            parking_ms=parking_ms,
+            descent_ms=descent_ms,
+            ascent_ms=ascent_ms,
+            descent_retries=0,
+            park_retries=0,
+        )
         self._path_mm = 0.0
         self._refresh_live_values()
         self.status.update(
@@ -381,6 +423,20 @@ class VirtualController:
             int(self.capture["raw_up_counts"]),
             int(self.capture["raw_down_fg_count"]),
             int(self.capture["raw_up_fg_count"]),
+        )
+
+    def _diagnostics_payload(self) -> bytes:
+        return struct.pack(
+            "<BIIIIIIHH",
+            RESULT_OK,
+            int(self.diagnostics["sequence"]),
+            int(self.diagnostics["cycle_ms"]),
+            int(self.diagnostics["measurement_ms"]),
+            int(self.diagnostics["parking_ms"]),
+            int(self.diagnostics["descent_ms"]),
+            int(self.diagnostics["ascent_ms"]),
+            int(self.diagnostics["descent_retries"]),
+            int(self.diagnostics["park_retries"]),
         )
 
     def handle(self, command: int, payload: bytes = b"") -> bytes:
@@ -442,6 +498,8 @@ class VirtualController:
             self.bunker_config = decode_bunker_config(b"\x00" + payload)
         elif command == CMD_GET_CALIBRATION_CAPTURE:
             return self._capture_payload()
+        elif command == CMD_GET_DIAGNOSTICS:
+            return self._diagnostics_payload()
         self.status["updated"] = time.time()
         return bytes((RESULT_OK,))
 

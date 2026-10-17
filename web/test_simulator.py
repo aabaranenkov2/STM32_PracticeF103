@@ -4,6 +4,7 @@ import unittest
 from protocol import (
     CMD_CLEAR_ERROR,
     CMD_GET_CALIBRATION_CAPTURE,
+    CMD_GET_DIAGNOSTICS,
     CMD_MEASURE_AUTO_ONCE,
     CMD_MOVE_DOWN,
     CMD_PARK,
@@ -11,6 +12,7 @@ from protocol import (
     CMD_SET_BUNKER_CONFIG,
     CMD_SET_CONFIG,
     decode_calibration_capture,
+    decode_diagnostics,
     encode_bunker_config,
     encode_config,
 )
@@ -91,6 +93,13 @@ class SimulatorTests(unittest.TestCase):
         self.assertTrue(capture["up_valid"])
         self.assertGreater(capture["raw_down_counts"], 0)
         self.assertGreater(capture["raw_down_fg_count"], 0)
+        diagnostics = decode_diagnostics(
+            simulator.handle(CMD_GET_DIAGNOSTICS)
+        )
+        self.assertEqual(diagnostics["sequence"], 1)
+        self.assertGreater(diagnostics["measurement_ms"], 0)
+        self.assertGreater(diagnostics["descent_ms"], 0)
+        self.assertGreater(diagnostics["ascent_ms"], 0)
 
     def test_encoder_mismatch_control_stops_after_configured_limit(self):
         config = test_config()

@@ -862,6 +862,33 @@
       font-size: .61rem;
       line-height: 1.15;
     }
+    .motion-diagnostics {
+      margin-top: 10px;
+      padding: 12px;
+      border: 1px solid #36516f;
+      border-radius: 10px;
+      background: #0b1727;
+    }
+    .motion-diagnostics h3 { margin: 0 0 10px; }
+    .motion-diagnostics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 8px;
+    }
+    .motion-diagnostic-value {
+      padding: 8px;
+      border-radius: 7px;
+      background: #12243a;
+      color: var(--muted);
+    }
+    .motion-diagnostic-value strong {
+      display: block;
+      margin-top: 3px;
+      color: #e8f0fa;
+    }
+    .diagnostic-normal { color: var(--ok) !important; }
+    .diagnostic-warning { color: #ffbd4a !important; }
+    .diagnostic-critical { color: var(--danger) !important; }
     .factory-profile-row {
       display: grid;
       grid-template-columns: minmax(180px, 260px) 1fr;
@@ -1217,6 +1244,7 @@
             <div class="metric"><span>Сейчас вверх</span><strong id="ascentDistance">0.0 мм</strong></div>
             <div class="metric"><span>Результат</span><strong id="storedResult">0.0 мм</strong></div>
             <div class="metric"><span>Разница</span><strong id="travelDifference">0.0 мм</strong></div>
+            <div class="metric"><span>Диагностика</span><strong id="motionHealth">Ожидание замера</strong></div>
             <button type="button" id="measurementsToggleBtn"
                     class="status-row-btn status-measurements-btn"
                     aria-expanded="false" aria-controls="measurementsPanel">
@@ -1270,6 +1298,19 @@
         <label class="setting"><span>Ошибок подряд до останова</span><input name="error_measurement_limit" id="errorMeasurementLimit" type="number" min="1" max="1000" step="1" value="2"><small>Счётчик сбрасывается после исправного замера, выключения режима или сброса ошибки.</small></label>
         <label class="setting"><span>Высота груза, мм</span><input name="load_height_mm" type="number" min="0" max="10000" step="1"><small>Прибавляется к измеренному ходу нити. При тарировке вычитается из эталона, чтобы смена груза не изменяла коэффициент энкодера.</small></label>
       </form>
+      <div class="motion-diagnostics">
+        <h3>Диагностика двигателя и механики</h3>
+        <div class="motion-diagnostics-grid">
+          <div class="motion-diagnostic-value">Состояние<strong id="diagHealth">Ожидание первого замера</strong></div>
+          <div class="motion-diagnostic-value">Последний цикл<strong id="diagCycle">—</strong></div>
+          <div class="motion-diagnostic-value">Время измерения<strong id="diagMeasurement">—</strong></div>
+          <div class="motion-diagnostic-value">Среднее время<strong id="diagAverageMeasurement">—</strong></div>
+          <div class="motion-diagnostic-value">Спуск<strong id="diagDescent">—</strong></div>
+          <div class="motion-diagnostic-value">Подъём<strong id="diagAscent">—</strong></div>
+          <div class="motion-diagnostic-value">Парковка<strong id="diagParking">—</strong></div>
+          <div class="motion-diagnostic-value">Статистика<strong id="diagSamples">0 замеров</strong></div>
+        </div>
+      </div>
       <div class="factory-profile-row">
         <button type="button" id="factoryRestoreBtn">
           Восстановить заводской профиль
@@ -2828,6 +2869,48 @@
       $("#storedResult").textContent = `${resultMm.toFixed(1)} мм`;
       $("#travelDifference").textContent =
         `${Number(data.travel_difference_mm).toFixed(1)} мм`;
+      const diagnostics = data.diagnostics || {};
+      const diagnosticSequence = Number(diagnostics.sequence) || 0;
+      const diagnosticHealth = String(diagnostics.health || "collecting");
+      const diagnosticClass = `diagnostic-${diagnosticHealth}`;
+      const healthText = String(
+        diagnostics.health_text || "Ожидание первого замера");
+      const healthNodes = [$("#motionHealth"), $("#diagHealth")];
+      healthNodes.forEach(node => {
+        node.classList.remove(
+          "diagnostic-normal", "diagnostic-warning",
+          "diagnostic-critical", "diagnostic-collecting");
+        node.classList.add(diagnosticClass);
+      });
+      $("#motionHealth").textContent = diagnosticSequence > 0
+        ? `${healthText} · ${Number(diagnostics.measurement_s).toFixed(1)} с`
+        : healthText;
+      $("#diagHealth").textContent = healthText;
+      $("#diagCycle").textContent = diagnosticSequence > 0
+        ? `${Number(diagnostics.cycle_s).toFixed(2)} с`
+        : "—";
+      $("#diagMeasurement").textContent = diagnosticSequence > 0
+        ? `${Number(diagnostics.measurement_s).toFixed(2)} с`
+        : "—";
+      $("#diagAverageMeasurement").textContent = diagnosticSequence > 0
+        ? `${Number(diagnostics.average_measurement_s).toFixed(2)} с`
+        : "—";
+      $("#diagDescent").textContent = diagnosticSequence > 0
+        ? `${Number(diagnostics.descent_s).toFixed(2)} с · ` +
+          `${Number(diagnostics.descent_speed_mm_s).toFixed(1)} мм/с ` +
+          `(ср. ${Number(diagnostics.average_descent_speed_mm_s).toFixed(1)})`
+        : "—";
+      $("#diagAscent").textContent = diagnosticSequence > 0
+        ? `${Number(diagnostics.ascent_s).toFixed(2)} с · ` +
+          `${Number(diagnostics.ascent_speed_mm_s).toFixed(1)} мм/с ` +
+          `(ср. ${Number(diagnostics.average_ascent_speed_mm_s).toFixed(1)})`
+        : "—";
+      $("#diagParking").textContent = diagnosticSequence > 0
+        ? `${Number(diagnostics.parking_s).toFixed(2)} с · ` +
+          `повторы ${Number(diagnostics.park_retries) || 0}`
+        : "—";
+      $("#diagSamples").textContent =
+        `${Number(diagnostics.sample_count) || 0} замеров`;
       $("#calRawMm").textContent = rawEncoderMm(data.encoder).toFixed(1);
       $("#calRawPulses").textContent = String(encCounts);
       const currentStateForCal = Number(data.state);

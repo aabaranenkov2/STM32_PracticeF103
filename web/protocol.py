@@ -26,6 +26,7 @@ CMD_GET_CONFIG = 0x21
 CMD_SET_BUNKER_CONFIG = 0x22
 CMD_GET_BUNKER_CONFIG = 0x23
 CMD_GET_CALIBRATION_CAPTURE = 0x24
+CMD_GET_DIAGNOSTICS = 0x25
 
 STATE_NAMES = {
     0: "Инициализация",
@@ -169,6 +170,22 @@ def decode_calibration_capture(payload: bytes) -> dict:
         "raw_down_fg_count": struct.unpack_from("<i", payload, 10)[0],
         "raw_up_fg_count": struct.unpack_from("<i", payload, 14)[0],
     }
+
+def decode_diagnostics(payload: bytes) -> dict:
+    if len(payload) != 29 or payload[0] != 0:
+        raise ValueError("invalid diagnostics response")
+    values = struct.unpack_from("<IIIIIIHH", payload, 1)
+    keys = (
+        "sequence",
+        "cycle_ms",
+        "measurement_ms",
+        "parking_ms",
+        "descent_ms",
+        "ascent_ms",
+        "descent_retries",
+        "park_retries",
+    )
+    return dict(zip(keys, values))
 
 
 NOMINAL_SHAFT_DIAMETER_MM = 10.0

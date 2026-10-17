@@ -466,6 +466,20 @@ static uint8_t g_descent_start_retries;
 static uint8_t g_park_test_start_retries;
 static bool g_park_test_retry_waiting;
 static uint32_t g_park_test_retry_started_ms;
+static bool g_diagnostics_cycle_active;
+static bool g_diagnostics_descent_started;
+static bool g_diagnostics_ascent_started;
+static uint32_t g_diagnostics_cycle_started_ms;
+static uint32_t g_diagnostics_descent_started_ms;
+static uint32_t g_diagnostics_ascent_started_ms;
+static uint32_t g_diagnostics_sequence;
+static uint32_t g_diagnostics_cycle_ms;
+static uint32_t g_diagnostics_measurement_ms;
+static uint32_t g_diagnostics_parking_ms;
+static uint32_t g_diagnostics_descent_ms;
+static uint32_t g_diagnostics_ascent_ms;
+static uint16_t g_diagnostics_descent_retries;
+static uint16_t g_diagnostics_park_retries;
 static uint32_t g_speed_window_started_ms;
 static uint32_t g_speed_window_counts;
 static bool g_ground_sensor_active;
@@ -496,6 +510,7 @@ static void protocol_send(uint8_t command, uint8_t sequence,
 static void protocol_service(uint32_t now);
 static uint16_t crc16_modbus(const uint8_t *data, uint8_t length);
 static void calibration_capture_payload(uint8_t *payload, uint8_t *length);
+static void diagnostics_payload(uint8_t *payload, uint8_t *length);
 static int32_t encoder_counts_to_tenth_mm(int32_t counts);
 static int32_t encoder_pulses_to_tenth_mm(int32_t counts);
 static int32_t motor_pulses_to_tenth_mm(int32_t pulses);
@@ -513,6 +528,8 @@ static bool sensor_busy(void);
 static void busy_output_update(void);
 static void interlock_tick(uint32_t now);
 static void enter_descent_contact(uint32_t now, bool gpio_instant_takeup);
+static void diagnostics_state_enter(lot_state_t state, uint32_t now);
+static void diagnostics_measurement_complete(uint32_t now);
 static void config_migrate_v7(const lot_config_v7_t *previous);
 
 _Static_assert((sizeof(config_record_t) % 2U) == 0U,
@@ -811,8 +828,58 @@ static void motor_start(bool up, uint16_t pwm)
     g_fg_step_sign = up ? 1 : -1;
 }
 
+static void diagnostics_state_enter(lot_state_t state, uint32_t now)
+{
+    if ((state == LOT_STATE_PARKING) && g_measurement_requested)
+    {
+        g_diagnostics_cycle_active = true;
+        g_diagnostics_descent_started = false;
+        g_diagnostics_ascent_started = false;
+        g_diagnostics_cycle_started_ms = now;
+    }
+    else if ((state == LOT_STATE_DESCENDING) &&
+             g_diagnostics_cycle_active &&
+             !g_diagnostics_descent_started)
+    {
+        g_diagnostics_parking_ms = now - g_diagnostics_cycle_started_ms;
+        g_diagnostics_descent_started_ms = now;
+        g_diagnostics_descent_started = true;
+    }
+    else if ((state == LOT_STATE_SLACK_TAKEUP) &&
+             g_diagnostics_cycle_active &&
+             g_diagnostics_descent_started &&
+             !g_diagnostics_ascent_started)
+    {
+        g_diagnostics_descent_ms =
+            now - g_diagnostics_descent_started_ms;
+        g_diagnostics_ascent_started_ms = now;
+        g_diagnostics_ascent_started = true;
+    }
+}
+
+static void diagnostics_measurement_complete(uint32_t now)
+{
+    if (!g_diagnostics_cycle_active ||
+        !g_diagnostics_descent_started ||
+        !g_diagnostics_ascent_started)
+    {
+        g_diagnostics_cycle_active = false;
+        return;
+    }
+
+    g_diagnostics_ascent_ms = now - g_diagnostics_ascent_started_ms;
+    g_diagnostics_measurement_ms =
+        now - g_diagnostics_descent_started_ms;
+    g_diagnostics_cycle_ms = now - g_diagnostics_cycle_started_ms;
+    g_diagnostics_descent_retries = g_descent_start_retries;
+    g_diagnostics_park_retries = g_park_test_start_retries;
+    ++g_diagnostics_sequence;
+    g_diagnostics_cycle_active = false;
+}
+
 static void enter_state(lot_state_t state, uint32_t now)
 {
+    diagnostics_state_enter(state, now);
     g_status.state = state;
     g_state_started_ms = now;
     g_state_encoder_start = g_status.encoder_position;
@@ -890,6 +957,7 @@ static void enter_state(lot_state_t state, uint32_t now)
 static void set_fault(uint16_t error, uint32_t now)
 {
     live_view_clear();
+    g_diagnostics_cycle_active = false;
     g_status.errors |= error;
     g_measurement_requested = false;
     g_skip_post_measure_park = false;
@@ -905,6 +973,7 @@ static bool start_command(lot_command_t command, uint32_t now)
         g_measurement_requested = false;
         g_skip_post_measure_park = false;
         g_encoder_mismatch_count = 0U;
+        g_diagnostics_cycle_active = false;
         if (g_status.errors != LOT_ERROR_NONE)
         {
             enter_state(LOT_STATE_FAULT, now);
@@ -1555,6 +1624,7 @@ static void motion_tick(uint32_t now)
                     finish_encoder_lengths();
                 bool encoder_mismatch_fault = false;
 
+                diagnostics_measurement_complete(now);
                 live_view_clear();
                 ++g_status.measurement_count;
                 if (g_config.mismatch_mm == 0U)
@@ -1863,6 +1933,20 @@ static void calibration_capture_payload(uint8_t *payload, uint8_t *length)
     *length = 18U;
 }
 
+static void diagnostics_payload(uint8_t *payload, uint8_t *length)
+{
+    payload[0] = LOT_RESULT_OK;
+    write_u32(&payload[1], g_diagnostics_sequence);
+    write_u32(&payload[5], g_diagnostics_cycle_ms);
+    write_u32(&payload[9], g_diagnostics_measurement_ms);
+    write_u32(&payload[13], g_diagnostics_parking_ms);
+    write_u32(&payload[17], g_diagnostics_descent_ms);
+    write_u32(&payload[21], g_diagnostics_ascent_ms);
+    write_u16(&payload[25], g_diagnostics_descent_retries);
+    write_u16(&payload[27], g_diagnostics_park_retries);
+    *length = 29U;
+}
+
 static void config_payload(uint8_t *payload, uint8_t *length)
 {
     payload[0] = LOT_RESULT_OK;
@@ -1949,6 +2033,17 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
             else
             {
                 calibration_capture_payload(response, &response_length);
+            }
+            break;
+
+        case LOT_CMD_GET_DIAGNOSTICS:
+            if (payload_length != 0U)
+            {
+                response[0] = LOT_RESULT_BAD_LENGTH;
+            }
+            else
+            {
+                diagnostics_payload(response, &response_length);
             }
             break;
 

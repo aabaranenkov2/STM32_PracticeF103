@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import json
 import math
 import os
@@ -39,6 +40,7 @@ from protocol import (
     CMD_GET_BUNKER_CONFIG,
     CMD_GET_CALIBRATION_CAPTURE,
     CMD_GET_CONFIG,
+    CMD_GET_DIAGNOSTICS,
     CMD_GET_STATUS,
     CMD_MEASURE_AUTO_ONCE,
     CMD_MOVE_DOWN,
@@ -62,6 +64,7 @@ from protocol import (
     decode_config,
     decode_bunker_config,
     decode_calibration_capture,
+    decode_diagnostics,
     decode_status,
     encode_bunker_config,
     encode_config,
@@ -185,6 +188,12 @@ def reports_directory() -> Path:
 
 def simulation_reports_directory() -> Path:
     path = reports_directory() / "симулятор"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def diagnostics_reports_directory() -> Path:
+    path = reports_directory() / "диагностика"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -326,6 +335,27 @@ class SerialGateway:
         self._uart_glitch_suppressed = 0
         self._poll_failures = 0
         self._last_reported_measurement_count: int | None = None
+        self._diagnostic_history: deque[dict[str, float]] = deque(maxlen=20)
+        self._last_diagnostic_sequence = 0
+        self._diagnostic_config_signature: tuple[int, ...] | None = None
+        self._diagnostics: dict[str, Any] = {
+            "sequence": 0,
+            "health": "collecting",
+            "health_text": "Ожидание первого замера",
+            "sample_count": 0,
+            "cycle_s": 0.0,
+            "measurement_s": 0.0,
+            "parking_s": 0.0,
+            "descent_s": 0.0,
+            "ascent_s": 0.0,
+            "descent_speed_mm_s": 0.0,
+            "ascent_speed_mm_s": 0.0,
+            "average_measurement_s": 0.0,
+            "average_descent_speed_mm_s": 0.0,
+            "average_ascent_speed_mm_s": 0.0,
+            "descent_retries": 0,
+            "park_retries": 0,
+        }
         self._status: dict[str, Any] = {
             "connected": simulate,
             "simulated": simulate,
@@ -422,6 +452,7 @@ class SerialGateway:
     def status(self) -> dict:
         with self._lock:
             result = dict(self._status)
+            result["diagnostics"] = dict(self._diagnostics)
         result["age_ms"] = max(0, int((time.time() - result["updated"]) * 1000))
         return result
 
@@ -631,6 +662,14 @@ class SerialGateway:
         status.update(connected=True, simulated=False,
                       port=self._serial.port, updated=time.time())
         self._record_uart_glitch(status)
+        count = int(status["measurement_count"])
+        if (self._last_reported_measurement_count is None or
+                count > self._last_reported_measurement_count):
+            diagnostics = decode_diagnostics(
+                self._transaction(CMD_GET_DIAGNOSTICS)
+            )
+            self._consume_diagnostics(diagnostics, status)
+        status["diagnostics"] = dict(self._diagnostics)
         with self._lock:
             if self._simulate:
                 return
@@ -640,6 +679,122 @@ class SerialGateway:
             if status["errors"]:
                 self._log.add("error", ", ".join(status["error_names"]), status)
         self._report_completed_measurement(status)
+
+    def _consume_diagnostics(self, raw: dict, status: dict) -> None:
+        sequence = int(raw.get("sequence", 0))
+        if sequence == 0 or sequence == self._last_diagnostic_sequence:
+            return
+
+        with self._lock:
+            config = dict(self._config)
+            bunker = dict(self._bunker_config)
+        signature = (
+            int(config.get("run_pwm", 0)),
+            int(config.get("park_pwm", 0)),
+            int(config.get("takeup_pwm", 0)),
+            int(config.get("motor_encoder_enabled", 0)),
+            int(config.get("length_cal_x10000", 0)),
+            int(config.get("motor_cal_x10000", 0)),
+        )
+        if (self._diagnostic_config_signature is not None and
+                signature != self._diagnostic_config_signature):
+            self._diagnostic_history.clear()
+        self._diagnostic_config_signature = signature
+
+        descent_ms = max(0, int(raw.get("descent_ms", 0)))
+        ascent_ms = max(0, int(raw.get("ascent_ms", 0)))
+        if int(config.get("motor_encoder_enabled", 0)) != 0:
+            descent_mm = max(
+                0.0, float(status.get("descent_motor_distance_mm", 0.0))
+            )
+            sensor_height = (
+                float(bunker.get("lower_height_mm", 0)) +
+                float(bunker.get("cylinder_height_mm", 0)) +
+                float(bunker.get("load_offset_mm", 0))
+            )
+            ascent_mm = max(
+                0.0,
+                sensor_height -
+                float(status.get("result_mm", 0.0)) -
+                float(config.get("load_height_mm", 0)),
+            )
+        else:
+            descent_mm = max(
+                0.0, float(status.get("saved_descent_mm", 0.0))
+            )
+            ascent_mm = max(
+                0.0, float(status.get("saved_ascent_mm", 0.0))
+            )
+        descent_speed = (
+            descent_mm * 1000.0 / descent_ms if descent_ms > 0 else 0.0
+        )
+        ascent_speed = (
+            ascent_mm * 1000.0 / ascent_ms if ascent_ms > 0 else 0.0
+        )
+        sample = {
+            "cycle_s": int(raw.get("cycle_ms", 0)) / 1000.0,
+            "measurement_s": int(raw.get("measurement_ms", 0)) / 1000.0,
+            "parking_s": int(raw.get("parking_ms", 0)) / 1000.0,
+            "descent_s": descent_ms / 1000.0,
+            "ascent_s": ascent_ms / 1000.0,
+            "descent_speed_mm_s": descent_speed,
+            "ascent_speed_mm_s": ascent_speed,
+        }
+        previous = list(self._diagnostic_history)
+        self._diagnostic_history.append(sample)
+        history = list(self._diagnostic_history)
+
+        def average(key: str, rows: list[dict[str, float]]) -> float:
+            values = [float(row[key]) for row in rows if float(row[key]) > 0]
+            return sum(values) / len(values) if values else 0.0
+
+        average_measurement = average("measurement_s", history)
+        average_down = average("descent_speed_mm_s", history)
+        average_up = average("ascent_speed_mm_s", history)
+        health = "collecting"
+        health_text = (
+            f"Накопление статистики {min(len(history), 5)}/5"
+            if len(previous) < 5 else
+            "Среднее время измерения в пределах нормы"
+        )
+        if len(previous) >= 5:
+            reference_down = average("descent_speed_mm_s", previous)
+            reference_up = average("ascent_speed_mm_s", previous)
+            reference_parking = average("parking_s", previous)
+            deviations = []
+            for current, reference in (
+                (descent_speed, reference_down),
+                (ascent_speed, reference_up),
+                (sample["parking_s"], reference_parking),
+            ):
+                if current > 0 and reference > 0:
+                    deviations.append(abs(current / reference - 1.0))
+            maximum_deviation = max(deviations, default=0.0)
+            retries = (
+                int(raw.get("descent_retries", 0)) +
+                int(raw.get("park_retries", 0))
+            )
+            if maximum_deviation > 0.25 or retries > 1:
+                health = "critical"
+                health_text = "Отклонение движения более 25 %"
+            elif maximum_deviation > 0.15 or retries == 1:
+                health = "warning"
+                health_text = "Проверьте двигатель и механику"
+            else:
+                health = "normal"
+                health_text = "Среднее время измерения в пределах нормы"
+
+        self._last_diagnostic_sequence = sequence
+        self._diagnostics = {
+            **raw,
+            **sample,
+            "health": health,
+            "health_text": health_text,
+            "sample_count": len(history),
+            "average_measurement_s": average_measurement,
+            "average_descent_speed_mm_s": average_down,
+            "average_ascent_speed_mm_s": average_up,
+        }
 
     def _report_completed_measurement(
         self, status: dict, *, simulated: bool = False
@@ -668,6 +823,34 @@ class SerialGateway:
             if new_file:
                 stream.write(report_header())
             stream.write(report_row(now, result_mm, tonnes))
+
+        diagnostics = dict(self._diagnostics)
+        if int(diagnostics.get("sequence", 0)) > 0:
+            diagnostic_path = (
+                diagnostics_reports_directory() /
+                f"{now:%Y-%m-%d}.csv"
+            )
+            new_diagnostic_file = (
+                not diagnostic_path.exists() or
+                diagnostic_path.stat().st_size == 0
+            )
+            with diagnostic_path.open(
+                "a", encoding="utf-8", newline=""
+            ) as stream:
+                if new_diagnostic_file:
+                    stream.write(
+                        "Дата и время;Цикл, с;Измерение, с;Парковка, с;"
+                        "Спуск, мм/с;Подъём, мм/с;Состояние\n"
+                    )
+                stream.write(
+                    f"{now:%Y-%m-%d %H:%M:%S};"
+                    f"{float(diagnostics['cycle_s']):.2f};"
+                    f"{float(diagnostics['measurement_s']):.2f};"
+                    f"{float(diagnostics['parking_s']):.2f};"
+                    f"{float(diagnostics['descent_speed_mm_s']):.2f};"
+                    f"{float(diagnostics['ascent_speed_mm_s']):.2f};"
+                    f"{diagnostics['health_text']}\n"
+                )
 
         self._last_reported_measurement_count = count
         self._log.add(
@@ -703,6 +886,14 @@ class SerialGateway:
                         self._config = self._simulator.config
                         self._bunker_config = self._simulator.bunker_config
                 if completed_status is not None:
+                    if self._simulator is not None:
+                        self._consume_diagnostics(
+                            dict(self._simulator.diagnostics),
+                            completed_status,
+                        )
+                        completed_status["diagnostics"] = dict(
+                            self._diagnostics
+                        )
                     self._report_completed_measurement(
                         completed_status, simulated=True
                     )

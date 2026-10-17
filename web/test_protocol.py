@@ -13,6 +13,7 @@ from protocol import (
     decode_bunker_config,
     decode_calibration_capture,
     decode_config,
+    decode_diagnostics,
     decode_status,
     encode_config,
     encode_bunker_config,
@@ -91,6 +92,19 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(capture["raw_down_counts"], 52400)
         self.assertEqual(capture["raw_up_counts"], 52380)
         self.assertEqual(capture["raw_up_fg_count"], 1118)
+
+    def test_decode_diagnostics(self):
+        payload = struct.pack(
+            "<BIIIIIIHH",
+            0, 7, 12500, 8400, 4100, 3900, 4500, 1, 0,
+        )
+
+        diagnostics = decode_diagnostics(payload)
+
+        self.assertEqual(diagnostics["sequence"], 7)
+        self.assertEqual(diagnostics["measurement_ms"], 8400)
+        self.assertEqual(diagnostics["ascent_ms"], 4500)
+        self.assertEqual(diagnostics["descent_retries"], 1)
 
     def test_parking_config_round_trip(self):
         config = {
