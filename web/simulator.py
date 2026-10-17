@@ -10,6 +10,7 @@ from protocol import (
     CMD_GET_CALIBRATION_CAPTURE,
     CMD_GET_DIAGNOSTICS,
     CMD_MEASURE_AUTO_ONCE,
+    CMD_MEASURE_AUTO_ONCE_FAST,
     CMD_MOVE_DOWN,
     CMD_MOVE_UP,
     CMD_PARK,
@@ -113,6 +114,7 @@ class VirtualController:
         self._parking_speed_mm_s = SIMULATION_SPEED_MM_S
         self._measurement_after_park = False
         self._park_test_before_measure = False
+        self._upper_position_confirmed = False
         self._encoder_mismatch_count = 0
         self._manual_pwm = int(self.config.get("run_pwm", 550))
         self._physical_enc_factor = max(
@@ -201,6 +203,7 @@ class VirtualController:
         self._park_test_target_mm = 0.0
         self._measurement_after_park = False
         self._park_test_before_measure = False
+        self._upper_position_confirmed = False
         self._encoder_mismatch_count = 0
         self.capture.update(
             down_valid=False,
@@ -265,7 +268,8 @@ class VirtualController:
         return max(0.0, sensor_height - fill_height - load_height)
 
     def _begin_parking(
-        self, measurement_after: bool, park_test: bool = False
+        self, measurement_after: bool, park_test: bool = False,
+        skip_seek: bool = False,
     ) -> None:
         self._measurement_after_park = measurement_after
         self._park_test_before_measure = park_test and measurement_after
@@ -285,14 +289,21 @@ class VirtualController:
             SIMULATION_SPEED_MM_S,
             self._path_mm / 2.0,
         )
-        self._phase = "parking_up"
         self.status["ground_detect"] = False
-        self._set_state(
-            4,
-            motor_enabled=True,
-            motor_up=True,
-            pwm=int(self.config.get("park_pwm", 450)),
-        )
+        self._upper_position_confirmed = False
+        if skip_seek:
+            self._measurement_after_park = False
+            self._park_test_before_measure = False
+            self._phase = "measure_wait"
+            self._set_state(13)
+        else:
+            self._phase = "parking_up"
+            self._set_state(
+                4,
+                motor_enabled=True,
+                motor_up=True,
+                pwm=int(self.config.get("park_pwm", 450)),
+            )
 
     def _begin_measurement_descent(self) -> None:
         self._target_path_mm = self._configured_ground_path_mm()
@@ -405,6 +416,7 @@ class VirtualController:
             self._set_state(8)
         else:
             self._phase = "ready"
+            self._upper_position_confirmed = True
             self._set_state(1)
         self._next_auto = now + (
             max(1000, int(self.config.get("auto_interval_ms", 60000))) / 1000.0
@@ -442,12 +454,14 @@ class VirtualController:
     def handle(self, command: int, payload: bytes = b"") -> bytes:
         now = time.monotonic()
         if command == CMD_MOVE_UP:
+            self._upper_position_confirmed = False
             self._phase = "manual_up"
             self._set_state(
                 2, motor_enabled=self._manual_pwm != 0,
                 motor_up=True, pwm=self._manual_pwm,
             )
         elif command == CMD_MOVE_DOWN:
+            self._upper_position_confirmed = False
             self._phase = "manual_down"
             on_ground = (
                 self._path_mm >= self._configured_ground_path_mm()
@@ -461,6 +475,7 @@ class VirtualController:
             )
         elif command == CMD_STOP:
             self.status["auto"] = False
+            self._upper_position_confirmed = False
             self._encoder_mismatch_count = 0
             self._phase = "ready"
             self._set_state(1)
@@ -469,7 +484,12 @@ class VirtualController:
         elif command == CMD_MEASURE_AUTO_ONCE:
             if int(self.status["state"]) != 1:
                 return bytes((RESULT_BAD_STATE,))
-            self._begin_parking(True)
+            self._begin_parking(True, park_test=True)
+        elif command == CMD_MEASURE_AUTO_ONCE_FAST:
+            if (int(self.status["state"]) != 1 or
+                    not self._upper_position_confirmed):
+                return bytes((RESULT_BAD_STATE,))
+            self._begin_parking(True, park_test=True, skip_seek=True)
         elif command == CMD_SET_AUTO:
             self.status["auto"] = bool(payload[0])
             if not self.status["auto"]:
@@ -593,6 +613,7 @@ class VirtualController:
             )
             self._refresh_live_values(self._parking_speed_mm_s)
             if self._path_mm <= 0.0:
+                self._upper_position_confirmed = True
                 if self._measurement_after_park:
                     self._measurement_after_park = False
                     self._phase = "measure_wait"

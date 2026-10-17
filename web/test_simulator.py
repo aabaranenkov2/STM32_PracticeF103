@@ -6,6 +6,7 @@ from protocol import (
     CMD_GET_CALIBRATION_CAPTURE,
     CMD_GET_DIAGNOSTICS,
     CMD_MEASURE_AUTO_ONCE,
+    CMD_MEASURE_AUTO_ONCE_FAST,
     CMD_MOVE_DOWN,
     CMD_PARK,
     CMD_SET_AUTO,
@@ -172,20 +173,43 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(states[-1], 1)
         self.assertNotIn(9, states[states.index(5):])
 
-    def test_measurement_skips_release_and_parking_test(self):
+    def test_measurement_runs_full_parking_test_before_descent(self):
         simulator = VirtualController(test_config(), test_bunker_config())
         simulator.handle(CMD_MEASURE_AUTO_ONCE)
         states = [simulator.status["state"]]
         now = time.monotonic()
 
-        for step in range(1, 100):
+        for step in range(1, 400):
             simulator.tick(now + step * 0.01)
             if states[-1] != simulator.status["state"]:
                 states.append(simulator.status["state"])
             if simulator.status["state"] == 5:
                 break
 
-        self.assertEqual(states, [4, 13, 5])
+        self.assertEqual(states, [4, 9, 10, 12, 11, 13, 5])
+
+    def test_fast_measurement_skips_repeated_parking(self):
+        simulator = VirtualController(test_config(), test_bunker_config())
+        self.assertNotEqual(
+            simulator.handle(CMD_MEASURE_AUTO_ONCE_FAST),
+            b"\x00",
+        )
+        self.run_measurement(simulator)
+
+        self.assertEqual(
+            simulator.handle(CMD_MEASURE_AUTO_ONCE_FAST),
+            b"\x00",
+        )
+        states = [simulator.status["state"]]
+        now = time.monotonic()
+        for step in range(1, 400):
+            simulator.tick(now + step * 0.01)
+            if states[-1] != simulator.status["state"]:
+                states.append(simulator.status["state"])
+            if simulator.status["state"] == 5:
+                break
+
+        self.assertEqual(states, [13, 5])
 
     def test_selected_motor_factor_changes_result_only_in_simulator(self):
         config = test_config()

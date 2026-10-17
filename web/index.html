@@ -687,6 +687,18 @@
       text-align: center;
       line-height: 1.2;
     }
+    .bunker-auto-option {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      color: var(--muted);
+      font-size: .72rem;
+      line-height: 1.2;
+    }
+    .bunker-auto-option input {
+      width: auto;
+      margin: 0;
+    }
     .bunker { width: 100%; height: 360px; display: block; overflow: visible; }
     .bunker-level-slider {
       width: 22px;
@@ -1569,6 +1581,11 @@
                    min="1" max="1000" step="1" value="10" title="Количество циклов">
           </div>
           <span id="autoProgress" class="bunker-auto-progress">0 / 0</span>
+          <label class="bunker-auto-option"
+                 title="Первый замер всегда выполняет полную парковку. Следующие циклы после подтверждённого возврата к упору начинают спуск без повторной парковки.">
+            <input id="autoSkipRepeatedParking" type="checkbox">
+            Пропускать повторную парковку
+          </label>
           <button type="button" class="bunker-ctrl-btn warning" data-action="clear_error">Сброс ошибки</button>
           <button type="button" class="bunker-ctrl-btn danger" data-action="stop">АВАРИЙНЫЙ СТОП</button>
           <button type="button" id="bunkerSettingsToggleBtn"
@@ -1720,7 +1737,9 @@
     let autoBatchActive = false;
     let autoBatchTarget = 0;
     let autoBatchCompleted = 0;
+    let autoBatchOriginalTarget = 0;
     let autoBatchErrorStreak = 0;
+    let autoFastParkingEligible = false;
     let autoCommandPending = false;
     let autoRecoveryPending = false;
     let autoResumeWhenReady = false;
@@ -1861,6 +1880,7 @@
     }
 
     const PERIODIC_MAX_SECONDS = 7 * 24 * 60 * 60;
+    const AUTO_BATCH_PAUSE_MS = 1500;
 
     function periodicIntervalSeconds() {
       const hours = Number($("#periodicIntervalHours").value);
@@ -2602,11 +2622,21 @@
     }
 
     function updateAutoUi() {
+      const remaining = Math.max(0, autoBatchTarget - autoBatchCompleted);
       $("#autoStart").textContent =
         autoBatchActive ? "Остановить автомат" : "Старт в автомате";
       $("#autoStart").classList.toggle("active", autoBatchActive);
-      $("#autoProgress").textContent =
-        `${autoBatchCompleted} / ${autoBatchTarget || 0}`;
+      if (autoBatchActive) {
+        $("#autoMeasureCount").value = remaining;
+        $("#autoProgress").textContent =
+          `Осталось ${remaining} из ${autoBatchTarget}`;
+      } else {
+        if (autoBatchOriginalTarget > 0) {
+          $("#autoMeasureCount").value = autoBatchOriginalTarget;
+        }
+        $("#autoProgress").textContent =
+          `${autoBatchCompleted} / ${autoBatchTarget || 0}`;
+      }
     }
 
     async function togglePeriodicMode() {
@@ -2655,6 +2685,7 @@
       autoCommandPending = false;
       autoRecoveryPending = false;
       autoResumeWhenReady = false;
+      autoFastParkingEligible = false;
       updateAutoUi();
       if (message) toast(message);
     }
@@ -2671,7 +2702,14 @@
         return;
       }
       autoCommandPending = true;
-      const accepted = await command("measure_auto");
+      const skipRepeatedParking =
+        $("#autoSkipRepeatedParking").checked &&
+        autoFastParkingEligible &&
+        autoBatchCompleted > 0;
+      autoFastParkingEligible = false;
+      const accepted = await command(
+        skipRepeatedParking ? "measure_auto_fast" : "measure_auto"
+      );
       if (!accepted) {
         stopAutoBatch("Автомат остановлен: команда замера не принята");
       }
@@ -2708,8 +2746,10 @@
         if (quality === "Годен") {
           autoBatchCompleted += 1;
           autoBatchErrorStreak = 0;
+          autoFastParkingEligible = true;
         } else {
           autoBatchErrorStreak += 1;
+          autoFastParkingEligible = false;
         }
         if (autoBatchCompleted >= autoBatchTarget) {
           stopAutoBatch("Автоматическая серия завершена");
@@ -2775,6 +2815,7 @@
         }
       }
       if (autoBatchActive && currentState === 8 && !autoRecoveryPending) {
+        autoFastParkingEligible = false;
         const errors = Number(data.errors) & ~32;
         const recoverableErrors = 512 | 2048 | 4096;
         if (!cycleReachedMeasurement) {
@@ -2793,7 +2834,9 @@
                  pendingMeasurementIndex === null &&
                  !autoRecoveryPending) {
         autoResumeWhenReady = false;
-        void issueNextAutoMeasurement();
+        setTimeout(() => {
+          void issueNextAutoMeasurement();
+        }, AUTO_BATCH_PAUSE_MS);
       }
       lastControllerState = currentState;
     }
@@ -3049,6 +3092,7 @@
         !data.connected || periodicActive ||
         (!autoBatchActive && Number(data.state) !== 1);
       $("#autoMeasureCount").disabled = autoBatchActive;
+      $("#autoSkipRepeatedParking").disabled = autoBatchActive;
       $("#periodicModeBtn").disabled =
         !data.connected || autoBatchActive ||
         (!periodicActive && Number(data.state) !== 1);
@@ -3148,7 +3192,8 @@
       try {
         const events = await api("/api/events");
         $("#events").innerHTML = events.length ? events.map(event =>
-          `<tr><td>${event.created}</td><td>${event.kind}</td><td>${event.message}</td></tr>`
+          `<tr><td>${new Date(event.created).toLocaleString()}</td>` +
+          `<td>${event.kind}</td><td>${event.message}</td></tr>`
         ).join("") : '<tr><td colspan="3">Событий пока нет</td></tr>';
       } catch (_) {}
     }
@@ -3224,8 +3269,10 @@
         return;
       }
       autoBatchTarget = target;
+      autoBatchOriginalTarget = target;
       autoBatchCompleted = 0;
       autoBatchErrorStreak = 0;
+      autoFastParkingEligible = false;
       autoBatchActive = true;
       updateAutoUi();
       void issueNextAutoMeasurement();
@@ -4004,7 +4051,7 @@
     loadApplicationVersion();
     loadFactoryProfileInfo();
     poll(); loadConfig(); loadCalibrationCapture(); loadBunkerConfig(true); loadEvents();
-    setInterval(poll, 40);
+    setInterval(poll, 100);
     setInterval(loadConfig, 5000);
     setInterval(loadCalibrationCapture, 2000);
     setInterval(loadBunkerConfig, 5000);

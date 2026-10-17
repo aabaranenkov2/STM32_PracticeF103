@@ -461,6 +461,7 @@ static bool g_state_encoder_seen;
 static bool g_state_up_seen;
 static bool g_measurement_requested;
 static bool g_skip_post_measure_park;
+static bool g_upper_position_confirmed;
 static uint16_t g_encoder_mismatch_count;
 static uint8_t g_descent_start_retries;
 static uint8_t g_park_test_start_retries;
@@ -830,7 +831,10 @@ static void motor_start(bool up, uint16_t pwm)
 
 static void diagnostics_state_enter(lot_state_t state, uint32_t now)
 {
-    if ((state == LOT_STATE_PARKING) && g_measurement_requested)
+    if (((state == LOT_STATE_PARKING) ||
+         (state == LOT_STATE_MEASURE_START_WAIT)) &&
+        g_measurement_requested &&
+        !g_diagnostics_cycle_active)
     {
         g_diagnostics_cycle_active = true;
         g_diagnostics_descent_started = false;
@@ -961,6 +965,7 @@ static void set_fault(uint16_t error, uint32_t now)
     g_status.errors |= error;
     g_measurement_requested = false;
     g_skip_post_measure_park = false;
+    g_upper_position_confirmed = false;
     enter_state(LOT_STATE_FAULT, now);
 }
 
@@ -972,6 +977,7 @@ static bool start_command(lot_command_t command, uint32_t now)
         g_local_auto_enabled = false;
         g_measurement_requested = false;
         g_skip_post_measure_park = false;
+        g_upper_position_confirmed = false;
         g_encoder_mismatch_count = 0U;
         g_diagnostics_cycle_active = false;
         if (g_status.errors != LOT_ERROR_NONE)
@@ -1001,14 +1007,17 @@ static bool start_command(lot_command_t command, uint32_t now)
     switch (command)
     {
         case LOT_CMD_MOVE_UP:
+            g_upper_position_confirmed = false;
             enter_state(LOT_STATE_MANUAL_UP, now);
             return true;
         case LOT_CMD_MOVE_DOWN:
+            g_upper_position_confirmed = false;
             enter_state(LOT_STATE_MANUAL_DOWN, now);
             return true;
         case LOT_CMD_PARK:
             g_measurement_requested = false;
             g_skip_post_measure_park = false;
+            g_upper_position_confirmed = false;
             enter_state(LOT_STATE_PARKING, now);
             return true;
         case LOT_CMD_MEASURE_AUTO_ONCE:
@@ -1016,7 +1025,20 @@ static bool start_command(lot_command_t command, uint32_t now)
             {
                 g_measurement_requested = true;
                 g_skip_post_measure_park = true;
+                g_upper_position_confirmed = false;
                 enter_state(LOT_STATE_PARKING, now);
+                return true;
+            }
+            return false;
+        case LOT_CMD_MEASURE_AUTO_ONCE_FAST:
+            if ((g_status.state == LOT_STATE_READY) &&
+                g_upper_position_confirmed)
+            {
+                g_measurement_requested = true;
+                g_skip_post_measure_park = true;
+                g_upper_position_confirmed = false;
+                g_descent_start_retries = 0U;
+                enter_state(LOT_STATE_MEASURE_START_WAIT, now);
                 return true;
             }
             return false;
@@ -1097,6 +1119,7 @@ static void interlock_tick(uint32_t now)
 
     g_measurement_requested = false;
     g_skip_post_measure_park = false;
+    g_upper_position_confirmed = false;
 
     switch (g_status.state)
     {
@@ -1426,14 +1449,8 @@ static void motion_tick(uint32_t now)
             }
             else if (upper_stop_reached(now, elapsed))
             {
-                if (g_measurement_requested && !g_status.auto_enabled)
-                {
-                    motor_stop();
-                    live_counters_zero(now);
-                    g_descent_start_retries = 0U;
-                    enter_state(LOT_STATE_MEASURE_START_WAIT, now);
-                }
-                else if (interlock_input_active() &&
+                g_upper_position_confirmed = true;
+                if (interlock_input_active() &&
                          !g_measurement_requested)
                 {
                     motor_stop();
@@ -1450,6 +1467,7 @@ static void motion_tick(uint32_t now)
         case LOT_STATE_DESCENDING:
         {
             bool gpio_contact = false;
+            bool descent_start_missing;
             int32_t fg_descent = g_fg_count - g_state_fg_start;
             int32_t selected_descent_tenth;
 
@@ -1475,15 +1493,12 @@ static void motion_tick(uint32_t now)
             }
             g_status.descent_distance = g_live_down_counts;
             gpio_contact = ground_sensor_descent_hit(elapsed);
-            if ((g_config.motor_encoder_enabled != 0U) &&
-                (elapsed > g_config.stall_timeout_ms) &&
-                     (fg_idle >= g_config.stall_timeout_ms))
-            {
-                set_fault(LOT_ERROR_MOT_FG_YELLOW_STALLED, now);
-            }
-            else if ((g_config.motor_encoder_enabled == 0U) &&
-                     !g_state_encoder_seen &&
-                     (elapsed > DESCENT_START_RETRY_MS))
+            descent_start_missing =
+                (g_config.motor_encoder_enabled != 0U) ?
+                (fg_descent <= (int32_t)PARK_FG_MOVEMENT_PULSES) :
+                !g_state_encoder_seen;
+            if (descent_start_missing &&
+                (elapsed > DESCENT_START_RETRY_MS))
             {
                 if (g_descent_start_retries < DESCENT_START_MAX_RETRIES)
                 {
@@ -1491,10 +1506,21 @@ static void motion_tick(uint32_t now)
                     motor_stop();
                     enter_state(LOT_STATE_MEASURE_START_WAIT, now);
                 }
+                else if (g_config.motor_encoder_enabled != 0U)
+                {
+                    set_fault(LOT_ERROR_MOT_FG_YELLOW_STALLED, now);
+                }
                 else
                 {
                     set_fault(LOT_ERROR_ENCODER_MISSING, now);
                 }
+            }
+            else if ((g_config.motor_encoder_enabled != 0U) &&
+                     (fg_descent > (int32_t)PARK_FG_MOVEMENT_PULSES) &&
+                (elapsed > g_config.stall_timeout_ms) &&
+                     (fg_idle >= g_config.stall_timeout_ms))
+            {
+                set_fault(LOT_ERROR_MOT_FG_YELLOW_STALLED, now);
             }
             else
             {
@@ -1627,6 +1653,7 @@ static void motion_tick(uint32_t now)
                 diagnostics_measurement_complete(now);
                 live_view_clear();
                 ++g_status.measurement_count;
+                g_upper_position_confirmed = true;
                 if (g_config.mismatch_mm == 0U)
                 {
                     g_encoder_mismatch_count = 0U;
@@ -1790,6 +1817,7 @@ static void motion_tick(uint32_t now)
             {
                 motor_stop();
                 live_counters_zero(now);
+                g_upper_position_confirmed = true;
                 if (interlock_input_active())
                 {
                     g_measurement_requested = false;
@@ -1837,6 +1865,7 @@ static void motion_tick(uint32_t now)
             {
                 g_measurement_requested = true;
                 g_skip_post_measure_park = true;
+                g_upper_position_confirmed = false;
                 enter_state(LOT_STATE_PARKING, now);
             }
             break;
@@ -2052,6 +2081,7 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
         case LOT_CMD_STOP:
         case LOT_CMD_PARK:
         case LOT_CMD_MEASURE_AUTO_ONCE:
+        case LOT_CMD_MEASURE_AUTO_ONCE_FAST:
             if (payload_length != 0U)
             {
                 response[0] = LOT_RESULT_BAD_LENGTH;
@@ -2092,6 +2122,7 @@ static void protocol_dispatch(const uint8_t *frame, uint8_t length)
             {
                 g_status.errors = LOT_ERROR_NONE;
                 g_encoder_mismatch_count = 0U;
+                g_upper_position_confirmed = false;
                 enter_state(interlock_input_active() ?
                             LOT_STATE_INTERLOCK_WAIT :
                             LOT_STATE_READY, now);

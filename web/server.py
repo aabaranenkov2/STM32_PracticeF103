@@ -43,6 +43,7 @@ from protocol import (
     CMD_GET_DIAGNOSTICS,
     CMD_GET_STATUS,
     CMD_MEASURE_AUTO_ONCE,
+    CMD_MEASURE_AUTO_ONCE_FAST,
     CMD_MOVE_DOWN,
     CMD_MOVE_UP,
     CMD_PARK,
@@ -81,6 +82,7 @@ COMMANDS = {
     "stop": CMD_STOP,
     "park": CMD_PARK,
     "measure_auto": CMD_MEASURE_AUTO_ONCE,
+    "measure_auto_fast": CMD_MEASURE_AUTO_ONCE_FAST,
     "clear_error": CMD_CLEAR_ERROR,
     "reset_encoders": CMD_RESET_ENCODERS,
 }
@@ -301,7 +303,8 @@ class EventLog:
                 (max(1, min(limit, 200)),),
             ).fetchall()
         return [
-            {"created": row[0], "kind": row[1], "message": row[2],
+            {"created": row[0].replace(" ", "T") + "Z",
+             "kind": row[1], "message": row[2],
              "data": json.loads(row[3]) if row[3] else None}
             for row in rows
         ]
@@ -330,9 +333,8 @@ class SerialGateway:
         self._serial = None
         self._parser = FrameParser()
         self._last_errors = 0
-        self._uart_glitch_visible = False
-        self._uart_glitch_logged_at = 0.0
-        self._uart_glitch_suppressed = 0
+        self._uart_glitch_window_started = time.monotonic()
+        self._uart_glitch_count = 0
         self._poll_failures = 0
         self._last_reported_measurement_count: int | None = None
         self._diagnostic_history: deque[dict[str, float]] = deque(maxlen=20)
@@ -626,29 +628,18 @@ class SerialGateway:
     def _record_uart_glitch(self, status: dict) -> None:
         uart_bit = 1 << 5
         visible = bool(status["errors"] & uart_bit)
-        if visible and not self._uart_glitch_visible:
-            now = time.monotonic()
-            if now - self._uart_glitch_logged_at >= 2.0:
-                count = self._uart_glitch_suppressed + 1
-                self._uart_glitch_suppressed = 0
-                self._uart_glitch_logged_at = now
-                message = (
-                    "Сбой кадра RS-485, измерение продолжено"
-                    if count == 1 else
-                    f"Сбои кадров RS-485: {count}, измерение продолжено"
+        now = time.monotonic()
+        if visible:
+            self._uart_glitch_count += 1
+        if (now - self._uart_glitch_window_started) >= 60.0:
+            if self._uart_glitch_count > 0:
+                self._log.add(
+                    "uart",
+                    f"RS-485: {self._uart_glitch_count} сбоев кадров за 60 с, "
+                    "потери связи нет",
                 )
-                self._log.add("uart", message)
-            else:
-                self._uart_glitch_suppressed += 1
-        elif (not visible and self._uart_glitch_visible and
-              self._uart_glitch_suppressed):
-            count = self._uart_glitch_suppressed
-            self._uart_glitch_suppressed = 0
-            self._log.add(
-                "uart",
-                f"Сбои кадров RS-485: {count}, измерение продолжено"
-            )
-        self._uart_glitch_visible = visible
+            self._uart_glitch_count = 0
+            self._uart_glitch_window_started = now
         if visible:
             status["errors"] &= ~uart_bit
             status["error_names"] = [
@@ -939,7 +930,7 @@ class SerialGateway:
                     self._note_poll_failure(exc)
                 else:
                     self._poll_failures = 0
-                next_poll = time.monotonic() + 0.04
+                next_poll = time.monotonic() + 0.10
 
 
 class ApiHandler(SimpleHTTPRequestHandler):
